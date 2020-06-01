@@ -1,0 +1,8 @@
+<?php
+
+/**
+ * @file
+ * Code for the Vodafone Contact feature.
+ */
+
+include_once 'vodafone_contact.features.inc';

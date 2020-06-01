@@ -1,0 +1,9 @@
+core = 7.x
+name = "Vodafone Dynamic Label"
+description = "A module for create dynamic label for content"
+package = Vodafone Custom
+
+# List of files included in the module
+files[] = vodafone_dynamic_label.info
+files[] = vodafone_dynamic_label.install
+files[] = vodafone_dynamic_label.module

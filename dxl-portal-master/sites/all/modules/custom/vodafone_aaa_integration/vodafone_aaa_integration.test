@@ -1,0 +1,53 @@
+<?php
+/**
+ * @file
+ * Test for the organization page of this website.
+ */
+
+class VodafoneaaaintegrationUnitTestCase extends SiteWebTestCase {
+  protected $privileged_user;
+
+  public static function getInfo() {
+    // Note: getInfo() strings are not translated with t().
+    return array(
+      'name' => 'Vodafone AAA Integration',
+      'description' => 'Test Vodafone AAA integration module',
+      'group' => 'Vodafone',
+      'mode' => 'site',
+    );
+  }
+
+  public function setUp() {
+    // Enable any modules required for the test. This should be an array of
+    // module names.
+    parent::setUp(array(
+      'vodafone_aaa_integration',
+    ));
+  }
+
+  /**
+   * Tests that existing user can authenticate.
+   */
+  public function testVodafoneAAAIntegration() {
+
+	//Unit cases for function vodafone_aaa_integration_change_password_access()
+	$result = vodafone_aaa_integration_change_password_access();
+	$this->assertTrue($result,"User have the change password permission");
+
+	//Unit cases for function vodafone_aaa_integration_user_authenticate_by_mail()
+	$userid = vodafone_aaa_integration_user_authenticate_by_mail('donotdelete_member@gmail.com','Apix@1100');
+	$result = $userid;
+	$this->assertTrue($result ,"Return uid of the user who registered with that E-Mail");
+
+	//Unit cases for function vodafone_aaa_integration_is_aaa_email()
+	$result = vodafone_aaa_integration_is_aaa_email('rjchandra123@gmail.com');
+	$this->assertFalse($result,"'rjchandra123@gmail.com' is not a valid AAA email");
+
+	$result = vodafone_aaa_integration_is_aaa_email('jaya.chandra2@vodafone.com');
+	$this->assertTrue($result,"'jaya.chandra2@vodafone.com' is a valid AAA email");
+
+	//Unit cases for function vodafone_aaa_integration_log_user_login()
+	$result = vodafone_aaa_integration_log_user_login('jaya.chandra2@vodafone.com','Success','');
+	$this->assertTrue($result,"Log entry for 'jaya.chandra2@vodafone.com' is stored successfully");
+  }
+}

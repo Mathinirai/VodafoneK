@@ -1,0 +1,44 @@
+/** Module Style **/
+.tabs-user-activity {
+  display: inline-block;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid gainsboro;
+  padding: 0;
+  margin-left: 0;
+  margin-bottom: 1.154em;
+  list-style: none;
+  }
+  .tabs-user-activity li.active {
+    background-color: white;
+    border: 1px solid gainsboro;
+    border-bottom: 0;
+    -webkit-border-radius: 7px 7px 0 0;
+    -moz-border-radius: 7px 7px 0 0;
+    -ms-border-radius: 7px 7px 0 0;
+    -o-border-radius: 7px 7px 0 0;
+    border-radius: 7px 7px 0 0;
+  }
+  .tabs-user-activity li {
+    float: left;
+    margin-bottom: -4px;
+  }
+  .tabs-user-activity li a {
+    padding: 4px 12px 5px 12px;
+    margin-right: 0;
+    height: 32px;
+    color: #0678be;
+    display: inline-block;
+    font-size: 14px;
+    line-height: 32px;
+  }
+  .tabs-user-activity li a:focus {
+    outline: none;
+    text-decoration: none;
+  }
+  .tabs-user-activity li a.active {
+    color: #000;
+  }
+  .tabs-user-activity li a:hover {
+    text-decoration: none;
+  }

@@ -1,0 +1,284 @@
+<?php
+
+/**
+ * @file
+ * Contains installation and uninstallation tasks.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function vodafone_aaa_integration_install() {
+
+  // Create the basic page node to be used as the welcome page for aaa users,
+  // VIP Members and Members.
+  $values = array(
+    'type' => 'page',
+    'uid' => 1,
+    'status' => 1,
+    'comment' => 0,
+    'promote' => 0,
+  );
+
+  $entity = entity_create('node', $values);
+  entity_save('node', $entity);
+  $node_wrapper = entity_metadata_wrapper('node', $entity);
+  $node_wrapper->title->set('Welcome');
+  $node_wrapper->body->set(array('value' => 'Welcome to Vodafone Developer Ecosystem..!!'));
+  $node_wrapper->save();
+
+  $nid = $node_wrapper->getIdentifier();
+  // Set the nid in a variable to be used in the welcome-home menu item's page
+  // callback in the module file.
+  if ($nid) {
+    variable_set('vodafone_welcome_page_nid', $nid);
+  }
+
+  // Set login destination for VIP Members / Members and AAA users.
+  $values = array(
+    'destination_type' => 0,
+    'destination' => 'welcome-home',
+    'triggers' => serialize(array(
+      'login' => 'login',
+    )),
+    'weight' => '-49',
+    'pages' => 'user/register',
+    'pages_type' => 0,
+    'roles' => serialize(array(
+      5 => 5,
+      6 => 6,
+      8 => 8,
+    )),
+  );
+  drupal_write_record('login_destination', $values);
+
+  // Set login destination for  AAA Orgadmins.
+  $values = array(
+    'destination_type' => 0,
+    'destination' => 'admin-manage/dashboard',
+    'triggers' => serialize(array(
+      'login' => 'login',
+    )),
+    'weight' => '-50',
+    'pages' => 'user/register',
+    'pages_type' => 0,
+    'roles' => serialize(array(
+      4 => 4,
+    )),
+  );
+  drupal_write_record('login_destination', $values);
+
+  // Create AAA user role.
+  $roles = user_roles(TRUE);
+  if (!in_array('AAA user', $roles)) {
+    $new_role = new stdClass();
+    $new_role->name = 'AAA user';
+    user_role_save($new_role);
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function vodafone_aaa_integration_uninstall() {
+  // Delete the Welcome page node and the variable containing the welcome page
+  // nid.
+  $nid = variable_get('vodafone_welcome_page_nid', 0);
+  node_delete($nid);
+  variable_del('vodafone_welcome_page_nid');
+  db_delete('login_destination')->condition('destination', 'welcome-home')->execute();
+  db_delete('login_destination')->condition('destination', 'admin-manage/dashboard')->execute();
+}
+
+/**
+ * Implements hook_schema().
+ */
+function vodafone_aaa_integration_schema() {
+  $schema['vodafone_aaa_user_login_history'] = array(
+    'description' => 'This table stores History of AAA User when they login via GIG/AAA',
+    'fields' => array(
+      'aaa_login_history_id' => array(
+        'description' => 'The AAA user login history id',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'user_name' => array(
+        'description' => 'The AAA user email id',
+        'type' => 'varchar',
+        'length' => '100',
+        'not null' => TRUE,
+      ),
+      'login_attempt_at' => array(
+        'description' => 'The timestamp when the user login',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'login_status' => array(
+        'description' => 'AAA user login status ( Success / Failure )',
+        'type' => 'varchar',
+        'length' => '100',
+        'not null' => TRUE,
+      ),
+      'error_message' => array(
+        'description' => 'Record error message if Login is failed',
+        'type' => 'varchar',
+        'length' => '500',
+        'not null' => TRUE,
+      ),
+      'x_forward' => array(
+        'description' => 'x-forward information',
+        'type' => 'varchar',
+        'length' => '200',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('aaa_login_history_id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implementation of hook_enable().
+ */
+function vodafone_aaa_integration_enable() {
+  // Set auto logout time to 30 minutes.
+  variable_set('autologout_timeout', '1800');
+
+  // Check if Phone field is not already created.
+if (!field_info_field('field_user_phone')) {
+    $field = array(
+      'active' => 1,
+      'cardinality' => 1,
+      'deleted' => 0,
+      'entity_types' => array(),
+      'field_name' => 'field_user_phone',
+      'indexes' => array(
+        'format' => array(
+          0 => 'format',
+        ),
+      ),
+      'locked' => 0,
+      'module' => 'text',
+      'settings' => array(
+        'max_length' => 255,
+      ),
+      'translatable' => 0,
+      'type' => 'text',
+    );
+    field_create_field($field);
+
+    // Create the instance on the bundle.
+    $instance = array(
+      'bundle' => 'user',
+      'deleted' => 0,
+      'display' => array(
+        'default' => array(
+          'label' => 'inline',
+          'settings' => array(),
+          'type' => 'textfield',
+          'weight' => 4,
+        ),
+      ),
+      'entity_type' => 'user',
+      'field_name' => 'field_user_phone',
+      'label' => 'Phone',
+      'settings' => array(
+          'user_register_form' => 1,
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  // Check if Company field is not already created.
+  if (!field_info_field('field_user_company')) {
+    $field = array(
+      'active' => 1,
+      'cardinality' => 1,
+      'deleted' => 0,
+      'entity_types' => array(),
+      'field_name' => 'field_user_company',
+      'indexes' => array(
+        'format' => array(
+          0 => 'format',
+        ),
+      ),
+      'locked' => 0,
+      'module' => 'text',
+      'settings' => array(
+        'max_length' => 255,
+      ),
+      'translatable' => 0,
+      'type' => 'text',
+    );
+    field_create_field($field);
+
+    // Create the instance on the bundle.
+    $instance = array(
+      'bundle' => 'user',
+      'deleted' => 0,
+      'display' => array(
+        'default' => array(
+          'label' => 'inline',
+          'settings' => array(),
+          'type' => 'textfield',
+          'weight' => 5,
+        ),
+      ),
+      'entity_type' => 'user',
+      'field_name' => 'field_user_company',
+      'label' => 'Company',
+      'settings' => array(
+          'user_register_form' => 1,
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  // Check if Department field is not already created.
+  if (!field_info_field('field_user_department')) {
+    $field = array(
+      'active' => 1,
+      'cardinality' => 1,
+      'deleted' => 0,
+      'entity_types' => array(),
+      'field_name' => 'field_user_department',
+      'indexes' => array(
+        'format' => array(
+          0 => 'format',
+        ),
+      ),
+      'locked' => 0,
+      'module' => 'text',
+      'settings' => array(
+        'max_length' => 255,
+      ),
+      'translatable' => 0,
+      'type' => 'text',
+    );
+    field_create_field($field);
+
+    // Create the instance on the bundle.
+    $instance = array(
+      'bundle' => 'user',
+      'deleted' => 0,
+      'display' => array(
+        'default' => array(
+          'label' => 'inline',
+          'settings' => array(),
+          'type' => 'textfield',
+          'weight' => 6,
+        ),
+      ),
+      'entity_type' => 'user',
+      'field_name' => 'field_user_department',
+      'label' => 'Department',
+      'settings' => array(
+          'user_register_form' => 1,
+      ),
+    );
+    field_create_instance($instance);
+  }
+}

@@ -1,0 +1,91 @@
+<?php
+
+/**
+ * @file
+ * This module provides a simple way to hide upload button on file field.
+ */
+
+/**
+ * Constants used in admin settings form.
+ */
+define('WEBFORM_HIDE_UPLOAD_LISTED', 1);
+define('WEBFORM_HIDE_UPLOAD_NOLISTED', 0);
+
+/**
+ * Implements hook_help().
+ */
+function webform_hide_upload_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/help#webform_hide_upload':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('This module allow user to hide upload button for file field component on webform, so by default upload button will be hidden and on select of any file it will show so that user can upload file.') . '</p>';
+      $output .= '<p>' . t('It also has configurable setting so that user can select whether he wants to apply this on all webforms or on selected webforms.') . '</p>';
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function webform_hide_upload_form_webform_admin_settings_alter(&$form, &$form_state, $form_id) {
+  $form['webform_hide_upload'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Webform hide Upload Button'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#weight' => 25,
+  );
+  $options = array(
+    WEBFORM_HIDE_UPLOAD_NOLISTED => t('All webforms except those listed'),
+    WEBFORM_HIDE_UPLOAD_LISTED => t('Only the listed webform'),
+  );
+  $description = t("Specify Webform by using their nid's. Enter one node id per line. If no option is selected it will apply on all webforms.");
+  $form['webform_hide_upload']['webform_hide_upload_enabled'] = array(
+    '#type' => 'radios',
+    '#title' => t('Hide Upload Button on specific webforms'),
+    '#options' => $options,
+    '#default_value' => variable_get('webform_hide_upload_enabled', WEBFORM_HIDE_UPLOAD_NOLISTED),
+  );
+  $form['webform_hide_upload']['webform_hide_upload_nids'] = array(
+    '#type' => 'textarea',
+    '#title' => '<span class="element-invisible">Webforms</span>',
+    '#default_value' => variable_get('webform_hide_upload_nids', ''),
+    '#description' => $description,
+  );
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function webform_hide_upload_form_alter(&$form, $form_state, $form_id) {
+  if (
+      isset($form['#node']) &&
+      $form['#node']->type == 'webform'
+  ) {
+    $webform_hide_upload_enabled = variable_get('webform_hide_upload_enabled', WEBFORM_HIDE_UPLOAD_NOLISTED);
+    $webform_hide_upload_nids = array_map('intval', array_filter(explode(PHP_EOL, variable_get('webform_hide_upload_nids', ''))));
+    if ($webform_hide_upload_enabled) {
+      $add_hide_upload_js = count($webform_hide_upload_nids) ? in_array($form['#node']->nid, $webform_hide_upload_nids) : FALSE;
+    }
+    else {
+      $add_hide_upload_js = count($webform_hide_upload_nids) ? !in_array($form['#node']->nid, $webform_hide_upload_nids) : TRUE;
+    }
+    if ($add_hide_upload_js) {
+      $form['#attached']['js'][] = drupal_get_path('module', 'webform_hide_upload') . '/js/webform_hide_upload.js';
+      $form['#attached']['css'][] = drupal_get_path('module', 'webform_hide_upload') . '/css/webform_hide_upload.css';
+    }
+  }
+}
+
+/**
+ * Implements template_preprocess_webform_managed_file().
+ */
+function webform_hide_upload_preprocess_webform_managed_file(&$vars) {
+  $element = &$vars['element'];
+  $element['#attributes']['class'] = isset($element['#attributes']['class']) ? $element['#attributes']['class'] : array();
+  if (isset($element['upload_button'])) {
+    $element['upload_button']['#attributes']['class'][] = 'webform-hide-upload-force';
+  }
+}

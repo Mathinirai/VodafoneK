@@ -1,0 +1,131 @@
+<?php
+
+/**
+ * @file
+ * Contains installation and uninstallation tasks.
+ */
+
+/**
+ * Implementation of hook_enable().
+ */
+function vf_configs_enable() {
+  // Create user roles.
+  $roles = array(
+    'Super Admin',
+    'Content Moderator',
+    'Content Approver',
+    'AAA user',
+  );
+
+  foreach($roles as $name) {
+    $existing_role = user_role_load_by_name($name);
+    if (empty($existing_role)){
+      $role = new stdClass();
+      $role->name = $name;
+      user_role_save($role);
+    }
+  }
+
+  variable_set('error_level', 1);
+}
+/**
+ * Enable new module: vodafone_wysiwyg_geshi.
+ */
+function vf_configs_update_7101() {
+  // Check if vodafone_wysiwyg_geshi is enabled, if not enabled enable it.
+  $modules = array();
+  
+  if (!module_exists('webform')) $modules[] = 'webform';
+  if (!module_exists('webform_features')) $modules[] = 'webform_features';
+  if (!module_exists('webform_hide_upload')) $modules[] = 'webform_hide_upload';
+  if (!module_exists('vodafone_contact')) $modules[] = 'vodafone_contact';
+  if (!empty($modules)) module_enable($modules);
+  
+}
+/**
+ * Enable new module: Jira Rest.
+ */
+function vf_configs_update_7102() {
+  // Check if vodafone_wysiwyg_geshi is enabled, if not enabled enable it.
+  $modules = array();
+  
+  if (!module_exists('jira_rest')) $modules[] = 'jira_rest';
+  if (!empty($modules)) module_enable($modules);
+  
+}
+/**
+ * Enable new content type: Content type.
+ */
+function vf_configs_update_7103() {
+  // Check if vodafone_wysiwyg_geshi is enabled, if not enabled enable it.
+  $modules = array();
+  
+  if (!module_exists('content_types')) $modules[] = 'content_types';
+  if (!empty($modules)) module_enable($modules);
+  features_revert_module('content_types');
+  
+}
+/**
+ * Enable new content type: Content type.
+ */
+function vf_configs_update_7104() {
+  // Check if vodafone_wysiwyg_geshi is enabled, if not enabled enable it.
+  $modules = array();
+  
+  if (!module_exists('views_ui')) $modules[] = 'views_ui';
+  if (!empty($modules)) module_enable($modules);
+  features_revert_module('microservices_listing');
+  features_revert_module('content_types');
+}
+/**
+ * Enable new modules.
+ */
+function vf_configs_update_7105() {
+  // Check if vodafone_wysiwyg_geshi is enabled, if not enabled enable it.
+  $modules = array();
+  
+  if (!module_exists('entityreference')) $modules[] = 'entityreference';
+  if (!module_exists('field_group')) $modules[] = 'field_group';
+  if (!empty($modules)) module_enable($modules);
+  features_revert_module('roles_permissions');
+  features_revert_module('content_types');
+}
+/**
+ * Enable update content type: Content type.
+ */
+function vf_configs_update_7106() {
+  features_revert_module('content_types');
+}
+/**
+ * Enable update content type: Contact Us.
+ */
+function vf_configs_update_7107() {
+  features_revert_module('vodafone_contact');
+}
+/**
+ * Enable update content type: Content type.
+ */
+function vf_configs_update_7108() {
+  features_revert_module('content_types');
+}
+/**
+ * Enable update content type: Content type.
+ */
+function vf_configs_update_7109() {
+  features_revert_module('content_types');
+}
+/**
+ * Enable new modules.
+ */
+function vf_configs_update_7110() {
+  // Check if checkall is enabled, if not enabled enable it.
+  $modules = array();
+  if (!module_exists('checkall')) $modules[] = 'checkall';
+  if (!empty($modules)) module_enable($modules);
+}
+/**
+ * Enable update content type: Content type.
+ */
+function vf_configs_update_7111() {
+  features_revert_module('content_types');
+}

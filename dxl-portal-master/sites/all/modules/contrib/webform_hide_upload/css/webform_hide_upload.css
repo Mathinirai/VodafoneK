@@ -1,0 +1,8 @@
+/*
+*@file
+*  Css file.
+*/
+
+.webform-hide-upload-force {
+  display: none !important;
+}

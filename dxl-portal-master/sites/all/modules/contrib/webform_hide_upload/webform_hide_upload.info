@@ -1,0 +1,12 @@
+name = Webform Hide Upload Button
+description = Simple module for hide upload button by default and will be show once file selected.
+core = 7.x
+dependencies[] = webform
+configure = admin/config/content/webform
+
+; Information added by Drupal.org packaging script on 2017-01-05
+version = "7.x-1.1"
+core = "7.x"
+project = "webform_hide_upload"
+datestamp = "1483603147"
+

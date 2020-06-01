@@ -1,0 +1,98 @@
+<?php
+
+/**
+ * @file
+ * Contains installation and uninstallation tasks.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function vodafone_tfa_schema() {
+  $schema['vodafone_tfa_otp_data'] = array(
+    'description' => 'This table stores the otp and form values for tfa for NON AAA users.',
+    'fields' => array(
+      'tfa_otp_id' => array(
+        'description' => 'The NON AAA user otp request id.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'user_name' => array(
+        'description' => 'The NON AAA user email id',
+        'type' => 'varchar',
+        'length' => '100',
+        'not null' => TRUE,
+      ),
+      'user_data' => array(
+        'description' => 'serialiazed user data',
+        'type' => 'blob',
+        'not null' => TRUE,
+      ),
+      'otp' => array(
+        'description' => 'user otp',
+        'type' => 'int',
+        'default' => 0,
+        'not null' => TRUE,
+      ),
+      'seq_num' => array(
+        'type' => 'varchar',
+        'description' => 'Sequence number',
+        'length' => 254,
+        'not null' => FALSE,
+      ),
+      'timestamp' => array(
+        'description' => 'The timestamp when OTP generated.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'OTP used/unused status',
+        'type' => 'int',
+        'default' => 0,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('tfa_otp_id'),
+  );
+  $schema['vodafone_tfa_otp_audit'] = array(
+    'description' => 'This table stores the audit data for OTP.',
+    'fields' => array(
+      'otp_requested_id' => array(
+        'description' => 'OTP requested id.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'tfa_user_ip' => array(
+        'description' => 'x-forward information',
+        'type' => 'varchar',
+        'length' => '200',
+        'not null' => TRUE,
+      ),
+      'tfa_user_email' => array(
+        'description' => 'IP address of user.',
+        'type' => 'varchar',
+        'length' => '100',
+        'not null' => TRUE,
+      ),
+      'seq_num' => array(
+        'type' => 'varchar',
+        'description' => 'Sequence number',
+        'length' => 254,
+        'not null' => FALSE,
+      ),
+      'timestamp' => array(
+        'description' => 'The timestamp when the user requested OTP.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('otp_requested_id'),
+  );
+
+
+  return $schema;
+}

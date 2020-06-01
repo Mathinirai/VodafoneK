@@ -1,0 +1,49 @@
+<?php
+/**
+ * Sets up the database schema for the new form data
+ * Implements hook_schema()
+ */
+function vodafone_dynamic_label_schema() {
+	$schema = array();
+	
+	// Our table is an array with fields and properties
+	$schema['vodafone_dynamic_label'] = array(
+		'description' => t('A table for holding the my_module data!'),
+		'fields' => array(
+			'label_id' => array(
+				'description' => t('Auto increment of the label ID'),
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'label_key' => array(
+				'description' => t('Label key name.'),
+				'type' => 'varchar',
+				'length' => 64,
+				'not null' => TRUE,
+			),
+			'label_value' => array(
+				'description' => t('Label key value.'),
+				'type' => 'text',
+				'size' => 'big',
+				'not null' => TRUE,
+			),
+		),
+		'primary_key' => array('label_id'),
+	);
+	return $schema;
+}
+ 
+/**
+ * Implements hook_install()
+ */
+function vodafone_dynamic_label_install() {
+	// Nothing to put in here for this module
+}
+ 
+/**
+ * Implements hook_uninstall()
+ */
+function vodafone_dynamic_label_uninstall() {
+	// Anything defined in hook_schema() will be automatically removed on uninstall
+}

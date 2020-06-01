@@ -1,0 +1,4 @@
+name = Vodafone Configurations
+description = This module provides the customizations that are specific to the Vodafone Developer Portal
+core = 7.x
+package = Vodafone Custom

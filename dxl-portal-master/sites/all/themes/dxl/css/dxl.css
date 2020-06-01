@@ -1,0 +1,44 @@
+label {
+    font-weight: normal !important;
+}
+.field-label {
+    display: none !important;
+}
+.button.button--primary.button--primary--dark.search-form__submit-btn{
+    margin-top: 96px;
+    float:right;
+    width: 100px;
+}
+#edit-advanced {
+    display: none;
+}
+.table.table--search.table--dark tbody tr td{
+    padding: 20px;
+    background-color: #333333;
+    color: #FFFFFF; 
+}
+.dxl-search-results .pager li {
+    display: inline;
+    padding-right: 20px;
+    align:center;
+}
+.dxl-search-results ol,.dxl-search-results ul{
+    padding-left: 0px;
+}
+.dxl-search-results .pager{
+    text-align: center;
+}
+@media (min-width: 320px) and (max-width: 480px) {
+ .button.button--primary.button--primary--dark.search-form__submit-btn{
+    margin-top: 65px;
+    float:right;
+    width: 100px;
+  }
+}
+@media (min-width: 768px) and (max-width: 1024px) {
+   .button.button--primary.button--primary--dark.search-form__submit-btn{
+        margin-top: 78px;
+        float:right;
+        width: 100px;
+    }
+}

@@ -1,0 +1,987 @@
+<?php
+
+/**
+ * @file
+ * Contains Two Factor Authentication code.
+ */
+
+  require_once 'sites/all/libraries/soaplib/soap.php' ;
+
+ /**
+ * Implements hook_menu().
+ */
+function vodafone_tfa_menu() {
+  $items['admin/config/vodafone/vodafone_two_factor_config'] = array(
+    'title' => 'Vodafone Two Factor Authentication Settings',
+    'description' => 'We have Symantec 2FA authentication for AAA user and Email token verification for non AAA users.',  
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vodafone_tfa_settings_form'),
+    'access arguments' => array('administer two factor auth settings'),
+  );
+
+  $items['confirmidentity'] = array(
+    'title' => 'Confirm your Identity',
+    'description' => 'Please enter security code.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vodafone_tfa_form'), //put the name of the form here
+    'access callback' => TRUE,
+  );
+  $items['OTP'] = array(
+    'title' => 'Confirm your Identity',
+    'description' => 'Please enter otp send on your registered email.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vodafone_otp_form'), //put the name of the form here
+    'access callback' => TRUE,
+  );
+  $items['send_mail/%ctools_js/%'] = array(
+  'title' => 'Resend OTP',
+  'page callback' => 'send_mail_link',
+  'page arguments' => array(1,2),
+  'access callback' => TRUE,
+  'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function vodafone_tfa_permission() {
+  return array(
+    'administer two factor auth settings' => array(
+      'title' => t('Administer Two Factor Authentication Settings'),
+      'description' => t('Allow users to change the Two Factor authentication settings'),
+      'restrict access' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Form API callback: Two Factor Authentication settings form.
+ */
+function vodafone_tfa_settings_form($form, &$form_state) {
+  // Office-net Section.
+  $form['office_net'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Office-net'),
+  );
+  $form['office_net']['vodafone_symantec_integration_office_enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable Office-net'),
+    '#default_value' => variable_get('vodafone_symantec_integration_office_enabled', 0),
+    '#description' => t('Check this box to enable Office-net'),
+  );
+  $form['office_net']['vodafone_symantec_integration_office_header'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Office-net Header'),
+    '#description' => t('Enter the Office-net Header name'),
+    '#default_value' => variable_get('vodafone_symantec_integration_office_header', ''),
+  );
+
+  // Symantec Integration Section.
+  $form['symantec_integration'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Symantec Integration for AAA Users'),
+  );
+  $form['symantec_integration']['vodafone_symantec_integration_enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable Symantec Integration'),
+    '#default_value' => variable_get('vodafone_symantec_integration_enabled', 0),
+    '#description' => t('Check this box to enable Symantec Integration'),
+  );
+
+  $client_cert = file_load(variable_get('vodafone_symantec_integration_client_cert', 0));
+  $form['symantec_integration']['vodafone_symantec_integration_client_cert'] = array(
+    '#title' => t('Client Certificate <br/>'.$client_cert->filename),
+    '#type' => 'managed_file',
+    '#description' => t('Upload a Client Certificate'),
+    '#upload_location' => 'private://tfa_certificate/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('cert cer pem der key'),
+    ),
+  );
+
+  // OTP for Non AAA Users.
+  $form['otp_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Email OTP for Non AAA Users'),
+  );
+  $form['otp_settings']['vodafone_symantec_integration_otp_enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable Email OTP'),
+    '#default_value' => variable_get('vodafone_symantec_integration_otp_enabled', 0),
+    '#description' => t('Check this box to enable OTP for Non AAA Users'),
+  );
+  $form['otp_settings']['vodafone_symantec_integration_otp_lifetime'] = array(
+    '#type' => 'textfield',
+    '#title' => t('OTP Lifetime'),
+    '#description' => t('Enter the OTP Lifetime in minutes'),
+    '#default_value' => variable_get('vodafone_symantec_integration_otp_lifetime', ''),
+  );
+
+  // Proxy Settings.
+  $form['proxy_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Proxy Settings'),
+  );
+  $form['proxy_settings']['vodafone_symantec_integration_proxy'] = array(
+    '#markup' => t('Proxy settings will be taken from AAA configuration settings, if enabled there.'),
+  );
+
+  // Proxy Settings.
+  $form['proxy_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Proxy Settings'),
+  );
+  $form['proxy_settings']['vodafone_symantec_integration_proxy'] = array(
+    '#markup' => t('Proxy settings will be taken from AAA configuration settings, if enabled there.'),
+  );
+  $form['#validate'][] = 'vodafone_tfa_settings_validation';
+  $form['#submit'][] = 'vodafone_tfa_settings_submit';
+  $form = system_settings_form($form);
+  return $form;
+}
+
+/**
+ * Form validation handler for settings_form().
+ */
+function vodafone_tfa_settings_validation($form, &$form_state) {
+
+  // Validate OTP lifetime.
+  $otp_lifetime = $form_state['values']['vodafone_symantec_integration_otp_lifetime'];
+  if ($otp_lifetime != '' && !is_numeric($otp_lifetime)) {
+    form_set_error('vodafone_symantec_integration_otp_lifetime', t('OTP lifetime must be numeric'));
+  }
+}
+
+/**
+ * Form submission handler for settings_form().
+ */
+function vodafone_tfa_settings_submit($form, &$form_state) {
+  // If client certificate is not uploaded assign previous certificate id.
+  if ($form_state['values']['vodafone_symantec_integration_client_cert'] == "") {
+    $form_state['values']['vodafone_symantec_integration_client_cert'] = variable_get('vodafone_symantec_integration_client_cert', '');
+  }
+
+  if ($form_state['values']['vodafone_symantec_integration_client_cert'] != variable_get('vodafone_symantec_integration_client_cert', 0)) {
+    // Change the file status to permanent so that it does not get removed on
+    // cron.
+    $file = file_load($form_state['values']['vodafone_symantec_integration_client_cert']);
+    $file->status = FILE_STATUS_PERMANENT;
+    file_save($file);
+    file_usage_add($file, 'vodafone_tfa', 'vodafone_tfa', 1);
+
+    // Delete the previous certificate file from the system.
+    $old_fid = variable_get('vodafone_symantec_integration_client_cert', 0);
+    if ($old_fid > 0) {
+      $old_file = file_load($old_fid);
+      file_usage_delete($old_file, 'vodafone_tfa', 'vodafone_tfa', 1);
+      file_delete($old_file);
+    }
+  }
+}
+
+// apache_request_headers replicement for nginx
+if (!function_exists('apache_request_headers')) {
+  function apache_request_headers() {
+    foreach($_SERVER as $key=>$value) {
+      if (substr($key,0,5)=="HTTP_") {
+        $key=str_replace(" ","-",ucwords(strtolower(str_replace("_"," ",substr($key,5)))));
+        $out[$key]=$value;
+      }else{
+        $out[$key]=$value;
+      }
+    }
+    return $out;
+  }
+}
+
+/**
+ * Get Apache headers.
+ * @return array
+ */
+function vodafone_tfa_get_apache_headers() {
+  if ( function_exists( 'apache_request_headers' ) ) {
+   $headers = apache_request_headers();
+  }
+  else {
+       $headers = $_SERVER;
+  }
+
+  return $headers;
+}
+
+/**
+ * Function to check if user is inside office network or not.
+ */
+function vodafone_check_user_network() {
+  // Set variable to false so that even if header doesnt exist it will return false.
+  $vodafone_internal = 'false';
+
+  // Get office header string from configs.
+  $office_header = variable_get('vodafone_symantec_integration_office_header', 0);
+
+  // Get apache headers.
+  $vodafone_header_info = vodafone_tfa_get_apache_headers();
+
+  // Process $vodafone_header_info and check header value set to true/false.
+  foreach($vodafone_header_info as $key => $val) {
+    if (strcasecmp($key, $office_header) == 0) {
+      $vodafone_internal = $val;
+    }
+  }
+  return $vodafone_internal;
+}
+/**
+ * Implements hook_form.
+ */
+function vodafone_tfa_form($form, &$form_state) {
+  // Checking if user comes from login page or not.
+  $api = $_SESSION['vf_tfa'][1];
+  if ($api !== "symantec") {
+    drupal_goto("user/login");
+  }
+
+  // Redirect to login page if Cancel button is clicked.
+  if (isset($form_state['input']['op']) && $form_state['input']['op'] == t('Cancel')) {
+    unset($_SESSION['vf_tfa']);
+    drupal_goto("user/login");
+  }
+
+  $form['desc'] = array(
+    '#markup' => 'For your protection, enter a security code to help confirm your identity.',
+  );
+  $form['otp'] = array(
+    '#type' => 'password',
+    '#title' => 'Security code',
+    '#size' => 6,
+    '#maxlength' => 6,
+    '#required' => TRUE,
+  );
+  $form['submit_button'] = array(
+    '#type' => 'submit',
+    '#value' => t('Continue'),
+    '#attributes' => array('class' => array('btn btn-primary')),
+  );
+  $form['cancel'] = array(
+    '#type' => 'button',
+    '#value' => t('Cancel'),
+    '#attributes' => array('class' => array('btn btn-secondary')),
+  );
+  $form['link'] = array(
+    '#markup' => '<p>&nbsp;</p><p>Please provision yourself to VUA (Vodafone User Authentication) service by clicking the Enrol link below, in case you haven\'t enrolled yet.</p><p><span class="lm2f">Learn more about 2-factor authentication <a href="/faqs-2fa" target="_blank"><strong>Click here</strong></a>.</span></p><p><a href="https://tsl.vodafone.com/vipssp/" target="_blank"><strong>'
+    .t("Enrol in Symantec").'</strong></a></p><p>&nbsp;</p><p><div id="vipSymfooter"><div id="vipCobranding">'
+    . '</div><div id="vipEnablesymc2"></div></div></p>',
+  );
+  return $form;
+}
+
+
+/**
+ * Implements hook_form_submit.
+ */
+function vodafone_tfa_form_submit($form, &$form_state) {
+  global $base_root;  
+  // Get the user details from session.
+  $account = $_SESSION['vf_tfa'][0];
+  $uid = (isset($_SESSION['vf_tfa'][0]->uid)) ? $_SESSION['vf_tfa'][0]->uid : '';
+  $api = $_SESSION['vf_tfa'][1];
+  $edit = (isset($_SESSION['vf_tfa'][2])) ? $_SESSION['vf_tfa'][2] : array();
+  unset($_SESSION['vf_tfa']);
+  // Validates security code and allows user to login.
+  $values = $form_state['input'];
+  $otp = $values['otp'];
+
+  // If user exists in portal get user id and mail id
+  // else get mail id and ip address.
+  if (!empty($uid)) {
+    $mail = $account->mail;
+    $user_identity = $uid;
+  }
+  else {
+    $mail = $account['mail'];
+    $user_identity = ip_address();
+  }
+
+  // Checking count of Invalid attempts.
+  if (!flood_is_allowed('failed_login_attempt_user', variable_get('user_failed_login_user_limit', 5), variable_get('user_failed_login_user_window', 21600),  $user_identity)) {
+    form_set_error('otp', format_plural(variable_get('user_failed_login_user_limit', 5), 'Sorry, there has been one failed login attempt for this account. It is temporarily blocked. Try again later.', 'Sorry, there have been @count failed login attempts for this account. It is temporarily blocked. Try again later.'));
+    drupal_goto('user/login');
+  }
+
+  // Making symantec webservice call.
+  $otp_match = vodafone_tfa_auth_match($otp, $mail);
+
+  if ($otp_match == "0000") {
+    if ($api == 'symantec') {
+
+      //Clearing the logs.
+      flood_clear_event('failed_login_attempt_user', $user_identity);
+      flood_clear_event('captcha_after_user_login', ip_address());
+      global $user;
+      if (!empty($uid)) {
+        $user = user_load($uid);
+        user_save($user, $edit);
+        drupal_session_regenerate();
+        
+        if(variable_get('portal_activity_log')){
+            $message = array(
+              'timestamp'   => date('d/m/Y:h:m:s'),
+              'base_url'    => $base_root,
+              'type'        => 'vodafone_tfa_form_submit',
+              'ip'          => ip_address(),
+              'request_uri' => $base_root . request_uri(),
+              'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+              'uid'         => $user->uid,
+              'mail'        => $user->mail,
+              'operation'   => 'User:login',
+              'message'     => 'User logged in successfully.',
+            );
+          vf_configs_custom_log($message);
+        }
+        // Role based redirection.
+        vodafone_tfa_redirect($user);
+      }
+      else {
+        $account_new =  user_save(null, (array)$account);
+        $user = user_load($account_new->uid);
+
+        drupal_session_regenerate();
+        drupal_goto('welcome');
+      }
+    }
+    else {
+     form_set_error('otp', t('Sorry, Your session has expired.'));
+     drupal_goto('user/login');
+    }
+  }
+  elseif ($otp_match == "6009") {
+    flood_register_event('failed_login_attempt_user', variable_get('user_failed_login_user_window', 21600), $user_identity);
+    form_set_error('otp', t('You have entered invalid Security code. Please try login again with valid code.'));
+    drupal_goto('user/login');
+  }
+  else {
+    vodafone_tfa_error_handling($otp_match);
+  }
+}
+
+/**
+ * Custom function to call symantec webservice.
+ */
+function vodafone_tfa_auth_match($otp, $mail) {
+  // Validates security code by sending xml request.
+  // Authenticate user.
+  try {
+    $auth_wsdl = drupal_realpath('private://') . "/tfa_certificate/vipuserservices-auth-1.4.wsdl";
+
+    $sym_certificate_id = variable_get('vodafone_symantec_integration_client_cert', 0);
+    $sym_certificate = file_load($sym_certificate_id);
+    $sym_certificate_url_obj = file_stream_wrapper_get_instance_by_uri($sym_certificate->uri);
+    $sym_certificate_url = (!empty($sym_certificate_url_obj)) ? $sym_certificate_url_obj ->realpath() : '';
+
+    // Making soap call.
+    // Get proxy settings from aaa inegration settings.
+    $proxy_enabled = variable_get('vodafone_aaa_integration_proxy_enabled', 0);
+    $proxy = '';
+    if (isset($proxy_enabled) && $proxy_enabled == 1) {
+      $proxy_hostname = variable_get('proxy_host', '');
+      $proxy_port = variable_get('proxy_port', '');
+      $proxy = $proxy_hostname.":".$proxy_port;
+    }
+    // If proxy is enabled set the proxy in soapclient.
+    if (isset($proxy_enabled) && $proxy_enabled == 1) {
+      $client = new CustomSoapClient($auth_wsdl,
+        array(
+          'trace' => TRUE,
+          'local_cert' => $sym_certificate_url,
+          'style' => SOAP_RPC,
+          'proxy_host' => $proxy_hostname,
+          'proxy_port' => $proxy_port
+        )
+      );
+    }
+    else {
+      $client = new CustomSoapClient($auth_wsdl,
+        array(
+          'trace' => TRUE,
+          'local_cert' => $sym_certificate_url,
+          'style' => SOAP_RPC
+        )
+      );
+    }
+
+    $xmlr = new SimpleXMLElement("<AuthenticateUserRequest></AuthenticateUserRequest>");
+    $request_id = "vf_devportal_".REQUEST_TIME;
+
+    $xmlr->addChild('requestId', $request_id);
+    $xmlr->addChild('userId', $mail);
+    $otpauth = $xmlr->addChild('otpAuthData');
+    $otpauth->addAttribute('xsi:type', 'OtpAuthDataType');
+    $otpauth->addChild('otp', $otp);
+
+    //calling authenticateuser service.
+    $result = $client->authenticateUser($xmlr);
+    $response = $client->__getLastResponse();
+    $session_xml = simplexml_load_string(preg_replace("/(<\/?)(\w+):([^>]*>)/", "$1$2$3", $response));
+    $response_st = $session_xml->SBody->AuthenticateUserResponse;
+    return $response_st->status;
+  }
+  catch (Exception $e) {
+    watchdog('debug OTP symantic call exception error:', $e->getMessage());
+    form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+    drupal_goto('user/login');
+  }
+}
+
+/**
+ * Handle symantec errors, show message to user.
+ *
+ * @param int $error_id
+ *   The curl error id.
+ * @param string $error
+ *   The curl error message in words.
+ * @param string &$error_message
+ */
+function vodafone_tfa_error_handling($error_id) {
+
+  switch ($error_id) {
+    // Invalid account.
+    case "6001":
+      form_set_error('otp', t('You haven\'t enrolled in Symantec. Please Enrol now by clicking <a href="https://tsl.vodafone.com/vipssp/" target="_blank">here</a>.'));
+      drupal_goto('user/login');
+      break;
+
+    // User doesn't exist.
+    case "6003":
+      form_set_error('otp', t('You haven\'t enrolled in Symantec. Please Enrol now by clicking <a href="https://tsl.vodafone.com/vipssp/" target="_blank">here</a>.'));
+      drupal_goto('user/login');
+      break;
+
+    // Internal error.
+    case "6005":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // Internal error.
+    case "6006":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // No binding exists between user and credential.
+    case "6007":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // User does not have an enabled credential for the given credential type.
+    case "6008":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // User PIN value does not meet policy settings for this account.
+    case "6020":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // User PIN is not enabled for this account.
+    case "6021":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // PIN expired, but second factor succeeded.
+    case "6039":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // Authentication level specified in the request is not satisfied.
+    case "6046":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // Schema validation failed.
+    case "600B":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // Client certificate is revoked.
+    case "600E":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // Operation not allowed in current user status.
+    case "601B":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // Invalid user PIN.
+    case "601F":
+      form_set_error('otp', t('Symantec 2-Factor Authentication Failed. Please contact your administrator.'));
+      drupal_goto('user/login');
+      break;
+
+    // default.
+    default:
+      form_set_error('otp', t('You have entered invalid Security code. Please try login again with valid code.'));
+      drupal_goto('user/login');
+      break;
+  }
+}
+
+/**
+ * Form to collect otp.
+ */
+function vodafone_otp_form($form, &$form_state) {
+  if (isset($_SESSION['NONAAA_OTP']) && ($_SESSION['NONAAA_OTP'] != '')) {
+    $form = array ();
+
+    $form['ctools_text'] = array (
+        '#type' => 'text',
+        '#prefix' => '<div id = "email_error">',
+        '#suffix' => '</div>'
+    );
+    $form['ctools_text_1'] = array (
+        '#type' => 'text',
+        '#prefix' => '<div id = "email_status">For your protection, enter a OTP that you received via email for sequence number<b>'.$_SESSION['seq_num'].'</b>.',
+        '#suffix' => '</div>'
+    );
+    $form['onetimepwd'] = array (
+        '#type' => 'password',
+        '#title' => 'One Time Password',
+        '#size' => 6,
+        '#maxlength' => 6,
+        '#required' => TRUE
+    );
+    $form['user_email'] = array (
+        '#type' => 'hidden',
+        '#value' => $_SESSION['user_email']
+    );
+    $form['seq_num'] = array (
+        '#type' => 'hidden',
+        '#value' => $_SESSION['seq_num']
+    );
+    $form['submit_button'] = array (
+        '#type' => 'submit',
+        '#value' => t('Submit')
+    );
+    $form['link'] = array (
+        '#markup' => create_otp_link($_SESSION['user_email'])
+    );
+    $form['2fa_link'] = array (
+        '#markup' => _vodafone_get_label_value('confirm_your_identity_2fa_link'),
+        '#prefix' => '<div class = "2fa_link_block mt20">',
+        '#suffix' => '</div>',
+    );
+
+    return $form;
+  }
+  else {
+    drupal_goto('user/login');
+  }
+}
+
+/**
+ * Implements vodafone_otp_form_validate().
+ */
+function vodafone_otp_form_validate($form, &$form_state) {
+  global $user,$base_root;
+  $otp_val = $form_state['values']['onetimepwd'];
+  // Check for length of otp.
+  $max_len = 6;
+  $cur_len = count(str_split($otp_val));
+
+  if (is_numeric($otp_val) && $cur_len == $max_len) {
+    return TRUE;
+  }
+  else {
+    form_set_error('onetimepwd', 'Please enter 6 digit numeric OTP.');
+    if(variable_get('portal_activity_log')){
+        $message = array(
+          'timestamp'   => date('d/m/Y:h:m:s'),
+          'base_url'    => $base_root,
+          'type'        => 'vodafone_otp_form_validate',
+          'ip'          => ip_address(),
+          'request_uri' => $base_root . request_uri(),
+          'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+          'uid'         => $user->uid,
+          'mail'        => $user->mail,
+          'operation'   => 'User:failed',
+          'message'     => 'Please enter 6 digit numeric OTP.',
+        );
+        vf_configs_custom_log($message);
+    }
+  }
+}
+
+/**
+ * Implements vodafone_otp_form_submit().
+ */
+function vodafone_otp_form_submit($form, &$form_state) {
+  global $user,$base_root;
+  unset($_SESSION['NONAAA_OTP']);
+  $otp_val = $form_state['values']['onetimepwd'];
+  $email = $form_state['input']['user_email'];
+
+  $seq_num =  $_SESSION['seq_num'];
+
+  $otp_query = db_query("SELECT * from vodafone_tfa_otp_data WHERE user_name = :user_email order by tfa_otp_id desc LIMIT 1", array(":user_email" => $email));
+  $otp_data = $otp_query->fetchObject();
+  $account = unserialize($otp_data->user_data);
+
+  // Check if OTP is valid and is not expired.
+  $valid = FALSE;
+  $otp_generation_time = $otp_data->timestamp;
+  $otp_seq_num = $otp_data->seq_num;
+  $lifetime = variable_get('vodafone_symantec_integration_otp_lifetime', '0');
+  if(round(abs(strtotime('now') - $otp_generation_time) / 60, 2) < $lifetime) {
+    $valid = TRUE;
+  }
+
+  //Checking count of Invalid attempts.
+  $identifier = $account->uid . '-' . ip_address();
+  if (!flood_is_allowed('failed_login_attempt_user', variable_get('user_failed_login_user_limit', 5), variable_get('user_failed_login_user_window', 21600),  $identifier)) {
+    form_set_error('name', format_plural(variable_get('user_failed_login_user_limit', 5), 'Sorry, there has been one failed login attempt for this account. It is temporarily blocked. Try again later.', 'Sorry, there have been @count failed login attempts for this account. It is temporarily blocked. Try again later.'));
+    drupal_goto('user/login');
+  }
+
+  // Login/fail and redirect user.
+  if ($otp_val == $otp_data->otp && $valid && $otp_data->status == '0' && $seq_num == $otp_seq_num) {
+
+    //Update table to make otp status 1.
+    $cr_update_no= db_update('vodafone_tfa_otp_data')
+                ->fields(array('status' => '1'))
+                ->condition('otp', $otp_val, '=')
+                ->condition('seq_num', $seq_num, '=')
+                ->condition('user_name', $email, '=')
+                ->execute();
+
+    // Login user.
+    $account = unserialize($otp_data->user_data);
+    global $user;
+    $user = user_load($account->uid);
+    if(variable_get('portal_activity_log')){
+        $message = array(
+          'timestamp'   => date('d/m/Y:h:m:s'),
+          'base_url'    => $base_root,
+          'type'        => 'vodafone_otp_form_submit',
+          'ip'          => ip_address(),
+          'request_uri' => $base_root . request_uri(),
+          'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+          'uid'         => $user->uid,
+          'mail'        => $user->mail,
+          'operation'   => 'User:login',
+          'message'     => 'User logged in successfully.',
+        );
+        vf_configs_custom_log($message);
+    }
+    drupal_session_regenerate();
+
+    // clear flood table.
+    flood_clear_event('failed_login_attempt_user', $identifier);
+    flood_clear_event('captcha_after_user_login', ip_address());
+
+    // Role based redirection.
+    vodafone_tfa_redirect($user);
+  }
+  else {
+    $account = user_load_by_mail($email);
+    flood_register_event('failed_login_attempt_user', variable_get('user_failed_login_user_window', 21600), $identifier);
+    form_set_error('onetimepwd', 'You have entered invalid OTP. Please try login again with valid OTP.');
+    if(variable_get('portal_activity_log')){
+        $message = array(
+          'timestamp'   => date('d/m/Y:h:m:s'),
+          'base_url'    => $base_root,
+          'type'        => 'vodafone_otp_form_submit',
+          'ip'          => ip_address(),
+          'request_uri' => $base_root . request_uri(),
+          'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+          'uid'         => $user->uid,
+          'mail'        => $user->mail,
+          'operation'   => 'User:failed',
+          'message'     => 'You have entered invalid OTP. Please try login again with valid OTP.',
+        );
+        vf_configs_custom_log($message);
+    }
+    drupal_goto('user/login');
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function vodafone_tfa_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'otp_mail':
+      // Set headers etc
+      $message['headers'] = array(
+        'MIME-Version' => '1.0',
+        'Content-Type' => 'text/html; charset=iso-8859-1; format=flowed; delsp=yes',
+        'Content-Transfer-Encoding' => '8Bit',
+        'X-Mailer' => 'Drupal',
+      );
+
+      $message['subject'] = $params['subject'];
+      $message['body'][] = $params['message'];
+  }
+}
+/**
+ * Function to create ctools otp resend link.
+ */
+function create_otp_link($email) {
+  ctools_include('ajax'); // Include the CTools tools that we need.
+  $mail_link = '';
+  $mail_link = ctools_ajax_text_button(t("Request New OTP"), "send_mail/nojs/$email", t("Send OTP Mail"), 'btn btn-secondary');
+  $link = "<div id='send-mail'>";
+  $link .= $mail_link;
+  $link .= "";
+  return $link;
+}
+
+function send_mail_link($js, $email) {
+  $output = '';
+  global $base_url;
+
+  // Get maximum count this link is requested.
+  $count = db_select('vodafone_tfa_otp_audit', 'o')
+    ->condition('o.tfa_user_email', $email, '=')
+    ->condition('o.timestamp', (strtotime('now') - 600), '>=')
+    ->condition('o.timestamp', strtotime('now'), '<=')
+    ->countQuery()
+    ->execute()
+    ->fetchField();
+
+  if($count == 5) {
+    $output .= '<div class="alert alert-block alert-danger">You have exceeded maximum number of attempts for OTP. Please wait for sometime and try again later.</div>';
+  }
+  else {
+  // Include the CTools tools that we need.
+  ctools_include('ajax');
+  if(isset($email)){
+    // Create otp and save user data to table.
+    $otp = mt_rand(100000,999999);
+    $account = user_load_by_mail($email);
+
+    // Generate sequence number.
+    $seq_num = create_otp_seq('vf_tfa_email_otp');
+    $_SESSION['seq_num'] = $seq_num;
+
+    // Store data in table.
+    $non_aaa_user_data = array(
+      'user_name' => $email,
+      'user_data' => serialize($account),
+      'otp' => $otp,
+      'timestamp' => strtotime('now'),
+      'status' => 0,
+      'seq_num' => $seq_num
+    );
+    $saved = db_insert('vodafone_tfa_otp_data')
+    ->fields($non_aaa_user_data)
+    ->execute();
+    $lifetime = variable_get('vodafone_symantec_integration_otp_lifetime', 0);
+
+    $output_1 .= t("For your protection, enter a OTP that you received via email for sequence number <b>").$seq_num.'</b>.';
+
+    // Send OTP mail using entity email.
+    $data = serialize(array($email, $base_url, $seq_num, $otp, $lifetime));
+    // Store email in email queue table.
+    $feature = 'send_otp_email';
+    $function_name = 'vodafone_send_OTP_email';
+    vodafone_email_email_function_queue_table($feature, $function_name, $data);
+
+    // Commented out below code as we are using entity email.
+    /*$params = array();
+    $email_from = "apix@vodafone.com";
+    $email_to = $email;
+    $params['subject'] = 'OTP for your account.';
+    $params['message'] = "<p>The OTP for your login request to ".$base_url." with Sequence number ".$seq_num." is ".$otp
+      .".<br/><br/>OTP Lifetime is ".$lifetime." minutes. It expires at ".date("Y-m-d H:i", (strtotime('now') + ($lifetime * 60)))
+      .".</p><p>Your<br/>APIX - Developer Eco System Team</p>";
+    drupal_mail('vodafone_tfa', 'otp_mail', $email_to, language_default(), $params, $email_from, TRUE);*/
+
+
+    // Save data to audit table.
+    $non_aaa_audit_log = array(
+      'tfa_user_email' => $email,
+      'tfa_user_ip' => get_ip(),
+      'timestamp' => strtotime('now'),
+      'seq_num' => $seq_num
+    );
+    $saved = db_insert('vodafone_tfa_otp_audit')
+    ->fields($non_aaa_audit_log)
+    ->execute();
+  }
+  }
+
+  if ($js) {
+    $commands = array();
+    $commands[] = ajax_command_html("#email_error", $output);
+    $commands[] = ajax_command_html("#email_status", $output_1);
+    print ajax_render($commands);
+    exit;
+  }
+  else {
+    return $output;
+  }
+}
+
+/**
+ * Implements hook_cronapi() to clear audit log for OTP.
+ */
+function vodafone_tfa_cronapi($op, $job = NULL) {
+  $items['otp_audit_log'] = array(
+    'description' => 'Deletes older OTP audit data.',
+    'rule' => '0 0 1 * *',
+    'weight' => 1,
+    'callback' => 'delete_tfa_audit_log',
+  );
+  return $items;
+}
+
+/**
+ * Callback to delete logs older than 3 months.
+ */
+function delete_tfa_audit_log() {
+  $delete = db_query("DELETE FROM vodafone_tfa_otp_audit WHERE timestamp < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 90 DAY))");
+}
+
+/**
+ * Function to send OTP and log data in tables.
+ */
+function send_otp($email) {
+  global $base_url;
+  $office_net_enabled = variable_get('vodafone_symantec_integration_office_enabled', 0);
+  $user_in_network = trim(vodafone_check_user_network());
+  if (($user_in_network == 'false' && $office_net_enabled) || !$office_net_enabled) {
+
+    $otp = mt_rand(100000, 999999);
+    $account = user_load_by_mail($email);
+    unset($account->name);
+    // Generate sequence number.
+    $seq_num = create_otp_seq('vf_tfa_email_otp');
+
+    // Store data in table.
+    $non_aaa_user_data = array (
+        'user_name' => $email,
+        'user_data' => serialize($account),
+        'otp' => $otp,
+        'timestamp' => strtotime('now'),
+        'status' => 0,
+        'seq_num' => $seq_num
+    );
+    $saved = db_insert('vodafone_tfa_otp_data')
+    ->fields($non_aaa_user_data)
+    ->execute();
+    $lifetime = variable_get('vodafone_symantec_integration_otp_lifetime', '0');
+
+    // Send OTP mail to user using entity email.
+    $data = serialize(array($email, $base_url, $seq_num, $otp, $lifetime));
+    // Store email in email queue table.
+    $feature = 'send_otp_email';
+    $function_name = 'vodafone_send_OTP_email';
+    vodafone_email_email_function_queue_table($feature, $function_name, $data);
+
+    // Commented out below code as we are using entity email.
+    /*$params = array ();
+    $email_from = "apix@vodafone.com";
+    $email_to = $email;
+    $params['subject'] = 'OTP for your account';
+    $params['message'] = "<p>The OTP for your login request to ".$base_url." with Sequence number ".$seq_num." is ".$otp
+      .".<br/><br/>OTP Lifetime is ".$lifetime." minutes. It expires at ".date("Y-m-d H:i", (strtotime('now') + ($lifetime * 60)))
+      .".</p><p>Your<br/>APIX - Developer Eco System Team</p>";
+    drupal_mail('vodafone_tfa', 'otp_mail', $email_to, language_default(), $params, $email_from, TRUE);*/
+
+    // Set session and redirect user to otp page.
+    $_SESSION['seq_num'] = $seq_num;
+    $_SESSION['user_email'] = $email;
+    $_SESSION['NONAAA_OTP'] = TRUE;
+    if (isset($_GET['destination'])) {
+      unset($_GET['destination']);
+    }
+    drupal_static_reset('drupal_get_destination');
+    drupal_goto('OTP');
+  }
+}
+
+/**
+ * Implements hook_form_validate().
+ */
+function vodafone_tfa_form_validate($form, &$form_state) {
+  $otp_valu = $form_state['values']['otp'];
+  // Check for length of otp.
+  $max_len = 6;
+  $cur_len = count(str_split($otp_valu));
+
+  if (is_numeric($otp_valu) && $cur_len == $max_len) {
+    return TRUE;
+  }
+  else {
+    form_set_error('otp', 'Please enter 6 digit numeric Security code.');
+  }
+}
+
+/**
+ * Custom function vodafone_tfa_redirect().
+ */
+function vodafone_tfa_redirect($user) {
+  // Redirect user to refer page.
+  if (isset($_SESSION['redirect_uri']) && !empty($_SESSION['redirect_uri'])) {
+    $destinaion = $_SESSION['redirect_uri'];
+    $url = drupal_parse_url($destinaion);
+    unset($_SESSION['redirect_uri']);
+    $options = array();
+    if (!empty($url['query']) && count($url['query']) > 0) {
+      $options = array('query' => $url['query']);
+    }
+    drupal_goto($url['path'], $options);
+  }
+  else {
+    // Redirection based on the roles.
+    $arr_roles = array_keys($user->roles);
+
+    if (in_array(3, $arr_roles)) {
+      drupal_goto('<front>');
+    }
+    else {
+      drupal_goto('<front>');
+    }
+     return TRUE;
+  }
+}
+
+/**
+ * Function to create tfa email otp sequence.
+ */
+function create_otp_seq($seq_name) {
+  // Display sequence number.
+  $otp_seq_query = db_query("SELECT nextval('".$seq_name."') as value");
+  $otp_seq_data = $otp_seq_query->fetchObject();
+  return  $otp_seq_data->value;
+}
+
+/**
+ * function for testcase
+ */
+function vodafone_tfa_check_user_network_testcase() {
+  global $base_url;
+  $headers = get_headers($base_url);
+  $vodafone_internal = 'No Header';
+  $office_header = variable_get('vodafone_symantec_integration_office_header', 0);
+  $header_val = explode(PHP_EOL, $headers);
+  foreach($header_val as $key => $val) {
+    $cookie_val = explode(':', $val);
+    if($cookie_val['0'] == $office_header) {
+      $vodafone_internal = $cookie_val['1'];
+    }
+  }
+  return $vodafone_internal;
+}

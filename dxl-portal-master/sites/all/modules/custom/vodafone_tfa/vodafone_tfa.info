@@ -1,0 +1,6 @@
+name = Vodafone Two Factor Authentication
+description = Enables the Vodafone Two Factor authentication functionality on the developer portal
+core = 7.x
+package = Vodafone Custom
+files[] = vodafone_tfa.test
+    

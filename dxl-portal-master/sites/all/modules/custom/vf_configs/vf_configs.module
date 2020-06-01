@@ -1,0 +1,855 @@
+<?php
+
+/**
+ * @file
+ * Code for Vodafone Developer portal specific customizations.
+ */
+
+// Update DXL_PORTAL_VERSION for every deployment version.
+define('DxL_PORTAL_VERSION', '1.0.1');
+
+/**
+ * Implements hook_requirements().
+ */
+function vf_configs_requirements($phase) {
+  // Displaying developer portal version under status reports.
+  if ($phase == 'runtime') {
+    $requirements['dxl_portal_version'] = array(
+      'title' => t('DxL Portal Version'),
+      'value' => DxL_PORTAL_VERSION,
+      'severity' => REQUIREMENT_INFO,
+      'weight' => -8,
+    );
+  }
+  return $requirements;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function vf_configs_menu() {
+  $items['admin/config/vodafone'] = array(
+    'title' => 'Custom Vodafone Configurations',
+    'description' => 'Settings related to Vodafone AAA, TFA, Org Whitelist, Swagger, API Opco...',
+    'position' => 'left',
+    'weight' => -50,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('access administration pages'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+  $items['admin/config/vodafone/dxl_configs'] = array(
+    'title' => 'Vodafone Configs Settings',
+    'description' => 'Custom settings for site version, host, proxy and others',  
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vf_configs_settings_form'),
+    'access arguments' => array('administer_dxl_configs_settings'),
+  );
+  $items['admin/config/vodafone/logs'] = array(
+    'title' => 'Portal Log and Activity',
+    'description' => 'Portal log and activity details of user and content operation activities.',
+    'weight' => 8,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vf_configs_log_status'),
+    'access arguments' => array('administer portal log activity'),
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function vf_configs_permission() {
+  return array(
+    'administer_dxl_configs_settings' => array(
+      'title' => t('Vodafone Configs Settings'),
+      'description' => t('Allow users to change DXL configs settings'),
+      'restrict access' => TRUE,
+    ),
+    'administer portal log activity' => array(
+      'title' => t('Portal Log and Activity'),
+      'description' => t('Allow users to check log list.'),
+      'restrict access' => TRUE,
+    ),   
+  );
+}
+
+/**
+ * Implements code debug().
+ */
+function p($a) {
+    echo '<pre>';
+    print_r($a);
+    echo '</pre>';
+    die;
+}
+
+/**
+ * Implements code debug_drupal().
+ */
+function sm($a) {
+  drupal_set_message('<pre>' . print_r($a, 1). '</pre>' );
+}
+
+/**
+ * Form API callback: Generic settings form.
+ */
+function vf_configs_settings_form($form, &$form_state) {
+  // Proxy settings.
+  $form['generic_proxy_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Generic Proxy Settings'),
+  );
+  $form['generic_proxy_settings']['proxy_host'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Proxy Hostname/IP'),
+    '#description' => t('Enter the proxy hostname/IP.'),
+    '#default_value' => variable_get('proxy_host', ''),
+  );
+  $form['generic_proxy_settings']['proxy_port'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Proxy Port'),
+    '#description' => t('Enter the proxy port.'),
+    '#default_value' => variable_get('proxy_port', ''),
+  );
+  // Portal activity logs
+  $form['server_log_path'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Server Log Path'),
+  );
+  $form['server_log_path']['vodafone_server_log_path'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Enter Server Log Path.'),
+    '#default_value' => variable_get('vodafone_server_log_path', '/var/SP/log'),
+    '#description' => t('For ESP Servers by default logs will be stored at /var/SP/log'),
+  );
+  $form['server_log_path']['portal-logs-activity'] = array(
+    '#type' => 'markup',
+    '#markup' => '<p><strong>Click here to see logs: </strong>'.l('Click here','/admin/config/vodafone/logs').'</p>',
+  );
+  
+  // Jira integate with contact form on and off settings.
+  $form['contact_form_with_jira'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Jira Tickets with Contact Form'),
+  );
+  $form['contact_form_with_jira']['enable_jira_tickets'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable jira tickets with contact form.'),
+    '#default_value' => variable_get('enable_jira_tickets', ''),
+  );
+    // Jira integate with contact form on and off settings.
+  $form['contact_form_with_jira']['jira_form_with_jira'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Jira Form Settings'),
+    '#collapsed' => TRUE,  
+    '#collapsible' => TRUE,
+  );
+  $form['contact_form_with_jira']['jira_form_with_jira']['jira_rest_jirainstanceurl'] = array(
+    '#type' => 'textfield',
+    '#title' => t('URL of the JIRA instance'),
+    '#default_value' => variable_get('jira_rest_jirainstanceurl', 'https://jira.sp.vodafone.com/tempcps'),
+    '#size' => 80,
+    '#description' => t("Enter the URL of your JIRA instance (e.g. https://yourjira.com:8443)"),
+    '#required' => TRUE,
+  );
+
+  $form['contact_form_with_jira']['jira_form_with_jira']['jira_rest_username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Username of the default user to connect to JIRA'),
+    '#default_value' => variable_get('jira_rest_username', '<your username>'),
+    '#size' => 80,
+    '#description' => t("Enter the username used as default to connect to you JIRA instance (e.g. admin)"),
+    '#required' => FALSE,
+  );
+
+  $form['contact_form_with_jira']['jira_form_with_jira']['jira_rest_password'] = array(
+    '#type' => 'password',
+    '#title' => t('Password of the default user to connect to JIRA'),
+    '#default_value' => variable_get('jira_rest_password', ''),
+    '#size' => 80,
+    '#description' => t("Enter the password of the default user to connect to JIRA"),
+    '#required' => FALSE,
+  );
+    // add more fields project details and all
+  $form['contact_form_with_jira']['jira_form_with_jira']['dxl_jira_project_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Project Id'),
+    '#required' => TRUE,
+    '#attributes' => array(
+          ' type' => 'number',
+    ),
+    '#default_value' => variable_get('dxl_jira_project_id', '22553'),
+    '#description' => t('Jira Support desk project id on which you want to create ticket'),
+  );   
+  $form['contact_form_with_jira']['jira_form_with_jira']['dxl_jira_project_issuetype'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Issue Type Id'),
+    '#required' => TRUE,
+    '#attributes' => array(
+          ' type' => 'number',
+    ),            
+    '#default_value' => variable_get('dxl_jira_project_issuetype', '3'),
+    '#description' => t('Issue type id which you want to discribe'),
+  );   
+  $form['contact_form_with_jira']['jira_form_with_jira']['dxl_jira_project_customfield_22327'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Priority'),
+    '#required' => TRUE,
+    '#attributes' => array(
+          ' type' => 'number',
+    ),            
+    '#default_value' => variable_get('dxl_jira_project_customfield_22327', '34951'),
+    '#description' => t('Priority id which discribe work order'),
+  ); 
+  
+  // Market Dashboard settings.
+  $form['market_dashboard'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Market Dashboard Settings'),
+  );
+  $form['market_dashboard']['market_dashboard_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('End Point URL'),
+    '#default_value' => variable_get('market_dashboard_url', 'https://ad0d1e8e89ea4cd99a918589d45da517.eu-central-1.aws.cloud.es.io/static/_search?pretty'),
+  );
+  $form['market_dashboard']['market_dashboard_days'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Enter no. of days to display Records'),
+    '#default_value' => variable_get('market_dashboard_days', '7'),
+
+  );
+  // Instana setting
+  $form['instana_configuration'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Instana Configuration'),
+  );
+  $form['instana_configuration']['instana_settings'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable to include Instana JS.'),
+    '#default_value' => variable_get('instana_settings', ''),
+  );
+  $form['instana_configuration']['instana_js'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Instana JS'),
+    '#default_value' => variable_get('instana_js', ''),
+    '#description' => t('Enter a environment specific JS for Instana.'),
+  );
+  
+  $form = system_settings_form($form);
+  return $form;
+}
+
+/**
+ * Page: Display logs and activity.
+ */
+function vf_configs_log_status($form, &$form_state) {
+  $logs_array = array();
+  $file = variable_get('vodafone_server_log_path')."/portal_activity.log";
+  if (!file_exists($file)) {
+     drupal_set_message('File not exist at path: "'.$file.'"', 'warning');
+  }
+  $handle = fopen($file, "r");
+  if ($handle) {
+    while (($line = fgets($handle)) !== false) {
+          $logs_array[] = json_decode($line,true);
+    }
+    fclose($handle);
+  }
+
+  $header = array();
+  $final_rows = array();
+  $rows_single = array();
+  $j =count($logs_array);
+  foreach ($logs_array as $keys => $values) {
+    $rows_single = array();
+    $header['SN'] = 'S.No.';
+    $rows_single[] = $j;
+    foreach ($values as $key => $value) {
+      if($key != 'type' && $key != 'base_url' ) {
+        $header[$key] = str_replace('_', ' ', strtoupper($key));
+
+        $rows_single[] = wordwrap(substr($value,0,200), 25, "\n", TRUE);
+      }
+    }
+    $final_rows[] = $rows_single;
+    $j--;
+  }
+  $final_rows = array_slice(array_reverse($final_rows),0,100);
+
+  $queue_table = theme_table(array(
+    "header" => $header,
+    "rows" => $final_rows,
+    "attributes" => array(
+        'class' => array(
+            'table table-responsive'
+        )
+    ),
+    "sticky" => FALSE,
+    "caption" => "",
+    "colgroups" => array(),
+    "empty" => t('NO_RECORDS_FOUND')
+  )) . theme("pager");
+
+  $form['queue_table'] = array(
+      '#markup' => $queue_table,
+  );
+  return $form;
+}
+
+/**
+ * Implement hook_custom_log
+ */
+function vf_configs_custom_log($message) {
+  global $user,$base_root;
+  /*
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vodafone_organization_user_insert',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $form_state['values']['name'],
+      'operation'   => 'User:failed',
+      'message'     => 'Login attempt failed for '.$form_state['values']['name'],
+    );
+  */
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+}
+
+/**
+ * Get the last updated date for nodes.
+ *
+ * @return
+ *   A formatted date for the last updated time if there are published nodes,
+ *   FALSE otherwise.
+ */
+function vf_configs_last_updated($type = 'page') {
+       
+    $type = array('apis_detail_page','channel_detail_page','product_item_detail_page','usecase_detail_page');
+    $query = db_select('node', 'n');
+    $query->fields('n', array('nid','title','changed'));
+    $query->condition('status', 0, '>'); // only published nodes count
+    if(isset($type)) $query->condition('type', $type ,'IN'); // selected specfic content type
+    $query->orderBy('changed', 'DESC');
+    $query->range(0,5);
+    $result = $query->execute();
+    $last_updated = $result->fetchAll();
+
+  return $last_updated;
+}
+
+/**
+ * Implement hook_user_logout
+ */
+function vf_configs_user_logout($account){
+    global $user,$base_root;
+  
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_user_logout',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'User:logout',
+      'message'     => 'User logout in successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+}
+
+/**
+ * Implement hook_node_insert()
+ */
+function vf_configs_node_insert($node){
+    global $user,$base_root;
+
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_node_insert',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'Node:Inserted, Status:'.$node->status,
+      'message'     => 'Node:<a href="'.$base_root.'/node/'.$node->nid.'">'.$node->nid.'</a> insert successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+  //Calling details paging link function after node submit
+  if( isset($node->workbench_moderation_state_new) && $node->workbench_moderation_state_new == 'published' && $node->status == 1 ){
+        collect_all_deatils_pages($node);
+  } 
+}
+
+/**
+ * Implement hook_node_update()
+ */
+function vf_configs_node_update($node){
+    global $user,$base_root;
+    
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_node_update',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'Node:Updated, Status:'.$node->status,
+      'message'     => 'Node:<a href="'.$base_root.'/node/'.$node->nid.'">'.$node->nid.'</a> update successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+}
+
+/**
+ * Implement hook_node_delete()
+ */
+function vf_configs_node_delete($node){
+    global $user,$base_root;
+ 
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_node_delete',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'Node:Deleted, Status:'.$node->status,
+      'message'     => 'Node:<a href="'.$base_root.'/node/'.$node->nid.'">'.$node->nid.'</a> delete successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+}
+
+/**
+ * Implement hook_taxonomy_term_insert()
+ */
+function vf_configs_taxonomy_term_insert($term){
+    global $user,$base_root;
+    $taxonomy = taxonomy_term_load($term->tid);
+    
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_taxonomy_term_insert',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'Term:Insert',
+      'message'     => 'Term '.$taxonomy->name.' insert successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+}
+
+/**
+ * Implement hook_taxonomy_term_update()
+ */
+function vf_configs_taxonomy_term_update($term){
+    global $user,$base_root;
+    $taxonomy = taxonomy_term_load($term->tid);
+    
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_taxonomy_term_update',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'Term:Update',
+      'message'     => 'Term '.$taxonomy->name.' update successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+}
+
+/**
+ * Implement hook_taxonomy_term_delete()
+ */
+function vf_configs_taxonomy_term_delete($term){
+    global $user,$base_root;
+    $taxonomy = taxonomy_term_load($term->tid);
+    
+   // Dummy message type array.
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vf_configs_taxonomy_term_delete',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'Term:Delete',
+      'message'     => 'Term '.$taxonomy->name.' delete successfully.',
+    );
+  
+  // Entry log details
+  if(variable_get('portal_activity_log')){
+    file_put_contents(variable_get('vodafone_server_log_path')."/portal_activity.log",json_encode($message).PHP_EOL , FILE_APPEND | LOCK_EX);
+  }
+  
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function vf_configs_form_alter(&$form, &$form_state, $form_id) {
+  global $base_url,$user;
+  
+  //Add global Js
+  drupal_add_js($base_url.'/sites/all/themes/dxl/js/dxl.js', 'file');
+  
+    if( isset($form['#node']->webform) && $form['#node']->webform['machine_name'] == 'contact_us' ) {  
+      $form['#submit'][] = 'webform_contact_us_submit';
+      $form['actions']['submit']['#attributes'] = array('class' => array('button button--primary mt-40'));
+    }
+    switch ($form_id){
+        case 'user_profile_form':
+            // Disable password field
+            $form['account']['pass']['#type'] = 'hidden';
+        break;    
+        case 'search_form':
+            $form['html'] = array(
+                '#type' => 'markup',
+                '#markup' => '<h2 class="heading heading--2 heading--leading heading--center">Search</h2>',
+                '#weight' => -10,
+            );
+            $form['basic']['keys']['#attributes']['class'][] = 'input-group__input form__input form__text js-sayt-input';
+            $form['basic']['keys']['#attributes']['placeholder'] = $form['basic']['keys']['#title'];
+            $form['basic']['keys']['#title'] = '';
+            $form['basic']['submit']['#value'] = 'Search';
+            $form['basic']['submit']['#attributes']['class'][] = 'input-group__submit button button--primary button--primary--dark search-form__submit-btn';
+        break;
+    }
+    // Add validation for node validate
+    $field_names = array('product_item_detail_page','apis_detail_page','channel_detail_page','usecase_detail_page');
+    if(isset($form['#node']->type)  && in_array($form['#node']->type, $field_names)){
+        $form['#validate'][] = 'vf_configs_form_validate';
+    }
+}
+
+/**
+ *  Adds a submit handler/function for the contact us form
+ */
+function webform_contact_us_submit($form, &$form_state) { 
+    global $user;
+    $jira_ticket = '';
+    $key = 'webform_submission_'.$user->uid.'-'.$form_state['values']['details']['sid'];
+    // Get the message from email session variable
+    if(isset($_SESSION[$user->uid.'-'.$form_state['values']['details']['sid']])) {
+        $message = $_SESSION[$user->uid.'-'.$form_state['values']['details']['sid']];
+        unset($_SESSION[$user->uid.'-'.$form_state['values']['details']['sid']]);
+        if(variable_get('enable_jira_tickets') && $form_state['webform_completed'] == 1) {
+            $issue_data =
+                array('fields'=>array(
+                    'project'=>array('id'=> variable_get('dxl_jira_project_id')), // Support desk project id
+                    'summary'=>$form_state['values']['submitted'][4],
+                    'description'=>$form_state['values']['submitted'][5],
+                    'issuetype'=>array('id'=> variable_get('dxl_jira_project_issuetype')), // Issue type
+                    'customfield_22327'=>array('id'=> variable_get('dxl_jira_project_customfield_22327')), //Priority
+                    'customfield_22328'=> $form_state['values']['submitted'][3], // Email field
+                ),
+            );
+            try {
+                $jira_auth = array(
+                    'username' => variable_get('jira_rest_username', ''),
+                    'password' => variable_get('jira_rest_password', ''),
+                    'jira_url' => variable_get('jira_rest_jirainstanceurl', 'https://jira.sp.vodafone.com/tempcps') . '/rest/api/2/issue/',
+                );
+                $proxy = variable_get('proxy_host', '').':'.variable_get('proxy_port', '');
+                // Create jira ticket on Atlassian  jira
+                $cmd_jira='curl -x '.$proxy.' -D- -u '.$jira_auth['username'].':'.$jira_auth['password'].' -X POST --data '.'\''.json_encode($issue_data).'\''.' -H "Content-Type: application/json" '.$jira_auth['jira_url'];
+                exec($cmd_jira,$result_jira);
+                $ticket_details = json_decode($result_jira[21]);
+                $jira_ticket = $ticket_details->key;
+
+                // Check empty file and upload file ti jira ticket
+                if( ($form_state['values']['submitted'][6] != 0) && is_numeric($form_state['values']['submitted'][6]) ) {
+                    $attachment = file_load($form_state['values']['submitted'][6]);
+                    $path = drupal_realpath($attachment->uri);
+                    $cmd='curl -x '.$proxy.' -D- -u '.$jira_auth['username'].':'.$jira_auth['password'].' -X POST -H "X-Atlassian-Token: no-check" -F "file=@'.$path.'" '.$jira_auth['jira_url'].$jira_ticket.'/attachments';
+                    exec($cmd,$result);
+                }
+                $message['params']['jira_ticket'] = $jira_ticket;
+                $message['params']['message'] = str_ireplace('<p style="text-align: left;margin-left:40px;"><b>JIRA Ticket ID: NA</p>','<p style="text-align: left;margin-left:40px;"><b>JIRA Ticket ID: '.$jira_ticket,$message['params']['message'].'</p>');
+                watchdog('jira', json_encode($ticket_details));
+            }
+            catch (Exception $e) {
+                $message['params']['jira_ticket'] = 'NA';
+                $message['params']['message'] = str_ireplace('<p style="text-align: left;margin-left:40px;"><b>JIRA Ticket ID: NA</p>','',$message['params']['message']);
+                watchdog("Jira Ticket With Contact Exception", $e->getMessage());
+            }
+        }
+        //Email to admin
+        drupal_mail('webform', $key, $message['to'], $message['language'], $message['params'], $message['from'], $send = TRUE);
+    }    
+}
+
+/**
+ * Implements hook_mail_alter(). for system generated emails.
+ */
+function vf_configs_mail_alter(&$message) { 
+  global $user;
+  // capture message id and disable default email as we will send email through entity email.
+  $id = $message['id'];
+  switch($id) {
+    case 'webform_submission':
+      if($message['params']['subject'] == 'DXL inquiry'){
+        if (!isset($message['params']['jira_ticket'])) {
+            $message['send'] = FALSE;
+        }
+        $_SESSION[$message['params']['submission']->uid.'-'.$message['params']['submission']->sid] = $message;
+      }
+    break;
+  }
+}
+
+/**
+ * Implements custom_function().
+ */
+function get_node_listing ($type = 'product_item_detail_page') {
+    
+  // Return all nids of nodes of type "page".
+    $query = db_select('node', 'n');
+    $query->join('field_data_field_display_order', 'fdo', 'n.nid = fdo.entity_id');        
+    $query->fields('n', array('nid'))
+          ->condition('n.type', $type)
+          ->condition('n.status', 1,'=');
+    
+    if($type == 'faq_page') $query->orderBy('fdo.field_display_order_value', 'ASC');
+    else $query->orderBy('n.title', 'ASC');    
+    // returns an indexed array
+    $results = $query->execute()->fetchCol();
+
+    // Now return the node objects.
+    $nodes = node_load_multiple($results);  
+    return $nodes;
+}
+
+/**
+ * Implements get_label_name().
+ */
+function get_label_name ($field_name, $bundle_name ) {
+    //Define variables for info
+    $entity_type = 'node';
+    if( isset($field_name) && isset($bundle_name) ){
+        $info = field_info_instance($entity_type, $field_name, $bundle_name);
+        $label = $info['label'];
+        return $label;
+    }
+}
+
+/**
+ * Implement hook_node_update()
+ */
+function vf_configs_node_presave($node){
+      //Calling details paging link function after node submit
+  if( isset($node->workbench_moderation_state_new) && $node->workbench_moderation_state_new == 'published' && $node->status == 1 ){
+        collect_all_deatils_pages($node);
+  } 
+}
+
+/**
+ * Implements custom_function().
+ */
+function collect_all_deatils_pages($node) {
+    // Content type and reference field array
+    $field_names = 
+            array(
+                'product_item_detail_page' => 'field_microservices_reference',
+                'apis_detail_page' => 'field_apis_reference',
+                'channel_detail_page' => 'field_channel_reference',
+                'usecase_detail_page' => 'field_usecase_reference'
+                );
+    $skip_field_names = $field_names;
+    if (array_key_exists($node->type,$field_names)) {
+        $field_name = $field_names[$node->type]; // Table name for linking fields
+        $nid = $node->nid; // Entity id
+        unset($skip_field_names[$node->type]);
+        // Entry in all references table for content types
+        foreach ($skip_field_names as $f_type => $f_name) {
+            //Add linking for content types fields
+            if(!empty($node->$f_name['und'])) {
+                $references = $node->$f_name['und'];
+                foreach ($references as $keys_a => $value_a) {
+                  if(isset($value_a['target_id']) && is_numeric($value_a['target_id'])){
+                      $already_exist_id[] = $value_a['target_id'];
+                      $detail_page_node = node_load($value_a['target_id']);
+                      if(!empty($detail_page_node->$field_name['und'])){
+                          foreach ($detail_page_node->$field_name['und'] as $key_page => $value_page) {
+                            $exist_link[] = $value_page['target_id'];
+                          }
+                          if(!in_array($nid, $exist_link)){ // Case 1 for adding the details pages
+                            $insert = array('target_id' => $nid );  
+                            $detail_page_node->$field_name['und'][] = $insert ;
+                            node_save($detail_page_node);
+                          }
+                      }else{
+                        $detail_page_node->$field_name['und'][0]['target_id'] = $nid;
+                        node_save($detail_page_node);   
+                      } 
+                  }
+                }
+                // check for remove one form existing reference
+                if(!empty($node->original->$f_name['und'])){
+                    $references_original = $node->original->$f_name['und'];    
+                    foreach ($references_original as $keys_original => $value_original) {
+                        if(isset($value_original['target_id']) && is_numeric($value_original['target_id'])){
+                            $exist_link_original[] = $value_original['target_id'];
+                        }
+                    }
+                    $removed_references = array_diff($exist_link_original, $already_exist_id);
+                    if(!empty($removed_references )){
+                        
+                        foreach ($removed_references as $keys_removed_reference ) {
+                            $detail_page_node_rm = node_load($keys_removed_reference);
+                            if(!empty($detail_page_node_rm->$field_name['und'])){
+                                
+                                foreach ($detail_page_node_rm->$field_name['und'] as $value) {
+                                    if($nid == $value['target_id']){
+                                        $new_node = node_load($keys_removed_reference);
+                                        $new_node->$field_name['und'] = array();
+                                        node_save($new_node);
+                                    }else{
+                                        $up_id['target_id'] = $value['target_id'];
+                                        if($up_id['target_id'] != $keys_removed_reference) $up_ids[] = $up_id;
+                                        if(!empty($up_ids)){
+                                            $new_node = node_load($nid);
+                                            $new_node->$f_name['und']= $up_ids;
+                                            node_save($new_node);
+                                        }
+                                    }
+                                }
+                            }else{
+                                $detail_page_node_rm->$f_name['und'] = array();
+                                node_save($detail_page_node_rm);
+                            } 
+                        }
+                        
+                    }
+                }
+            }else{
+                
+                if(!empty($node->original->$f_name['und'])) {
+                    foreach ($node->original->$f_name['und'] as $keys_old => $reference_target_id_original) {
+                        $detail_page_node_new = node_load($reference_target_id_original['target_id']);
+                        $field_updated_name = $field_names[$node->type];
+                        if(!empty($detail_page_node_new->$field_updated_name['und'])) {
+                            foreach ($detail_page_node_new->$field_updated_name['und'] as $pre_data) {
+                                if($nid == $pre_data['target_id']){
+                                    $detail_page_node_new->$field_updated_name['und'] = array();
+                                    node_save($detail_page_node_new);
+                                }else{
+                                    $up_updated_ids[]['target_id'] = $pre_data['target_id'];
+                                }
+                                if(!empty($up_updated_ids)){
+                                    $detail_page_node_new->$field_updated_name['und']= $up_updated_ids;
+                                    node_save($detail_page_node_new);
+                                }
+                            }
+                        }
+                    
+                    }
+                }
+                  
+            }
+        }
+    }
+}
+/**
+ * Implements hook_form_validate().
+ */
+function vf_configs_form_validate(&$form, &$form_state) {
+    
+    $field_names = 
+            array(
+                'Microservice Reference' => 'field_microservices_reference',
+                'APIs Reference' => 'field_apis_reference',
+                'Channel Reference' => 'field_channel_reference',
+                'Usecase Reference' => 'field_usecase_reference'
+                );
+
+    foreach($field_names as $field_keys => $field_name){
+        if(isset($form_state['values'][$field_name])){
+            $check_nids = array();
+            foreach ($form_state['values'][$field_name]['und'] as $value) {
+               if(isset($value['target_id']) && is_numeric($value['target_id'])) $check_nids[] = $value['target_id'];
+            }
+            if(count(array_unique($check_nids))<count($check_nids)) {
+                    form_set_error($field_name, 'Duplicate value not allowed in '.$field_keys);
+            }
+        }
+    }  
+}
+
+/**
+ * Implements get_term_list().
+ */
+function get_term_list ($taxonomy) {
+    $vocabulary = taxonomy_vocabulary_machine_name_load($taxonomy);
+    $terms = entity_load('taxonomy_term', FALSE, array('vid' => $vocabulary->vid));
+    $term_types = array();
+    foreach ($terms as $term_key => $term) {
+        $term_types[]=$term->name;
+    }
+    sort($term_types);
+    return $term_types;
+}
+
+/**
+ * Implements function to include instana JS.
+ */
+function vf_configs_instana_integration()
+{
+  $js_script = '';  
+  if(variable_get('instana_settings'))
+  {
+    $js_script =  variable_get('instana_js');
+  }
+    return $js_script;
+}

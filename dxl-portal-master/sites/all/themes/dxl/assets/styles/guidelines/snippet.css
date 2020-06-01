@@ -1,0 +1,123 @@
+/*! Color themes for Google Code Prettify | MIT License | github.com/jmblog/color-themes-for-google-code-prettify */
+
+.btn {
+    display: inline-block;
+    position: absolute;
+    top: 16px;
+    right: 18px;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 20px;
+    color: #333;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: pointer;
+    background-color: #eee;
+    background-image: linear-gradient(#fcfcfc, #eee);
+    border: 1px solid #d5d5d5;
+    border-radius: 3px;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-appearance: none;
+}
+
+.clippy {
+    margin-top: -3px;
+    position: relative;
+    top: 3px;
+    vertical-align: unset;
+}
+
+.prettyprint {
+    background: #f8f8f8;
+    font-family: Menlo, "Bitstream Vera Sans Mono", "DejaVu Sans Mono", Monaco, Consolas, monospace;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    text-align: left;
+}
+
+.pln {
+    color: #333;
+}
+
+/* Specify class=linenums on a pre to get line numbering */
+
+ol.linenums {
+    margin-top: 0;
+    margin-bottom: 0;
+    color: #cccccc;
+}
+
+li.L0, li.L1, li.L2, li.L3, li.L4, li.L5, li.L6, li.L7, li.L8, li.L9 {
+    padding-left: 1em;
+    list-style-type: decimal;
+}
+
+/* Alternate shading for lines */
+
+li.L1, li.L3, li.L5, li.L7, li.L9 {
+    background-color: #fff;
+}
+
+@media screen {
+    /* string content */
+    .str {
+        color: #d14;
+    }
+    /* keyword */
+    .kwd {
+        color: #333;
+    }
+    /* comment */
+    .com {
+        color: #998;
+    }
+    /* type name */
+    .typ {
+        color: #458;
+    }
+    /* literal value */
+    .lit {
+        color: #458;
+    }
+    /* punctuation */
+    .pun {
+        color: #333;
+    }
+    /* lisp open bracket */
+    .opn {
+        color: #333;
+    }
+    /* lisp close bracket */
+    .clo {
+        color: #333;
+    }
+    /* markup tag name */
+    .tag {
+        color: #000080;
+    }
+    /* markup attribute name */
+    .atn {
+        color: #008080;
+    }
+    /* markup attribute value */
+    .atv {
+        color: #d14;
+    }
+    /* declaration */
+    .dec {
+        color: #333;
+    }
+    /* variable name */
+    .var {
+        color: #008080;
+    }
+    /* function name */
+    .fun {
+        color: #900;
+    }
+}

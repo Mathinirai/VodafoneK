@@ -1,0 +1,18 @@
+
+name = Dxl
+description = A flexible, recolorable theme with many regions.
+package = Core
+version = VERSION
+core = 7.x
+project = "dxl"
+
+regions[header] = Header 
+regions[highlighted] = Highlighted 
+regions[help] = Help 
+regions[featured] = Featured
+regions[content] = Content 
+regions[sidebar_first] = Left sidebar 
+regions[sidebar_second] = Right sidebar 
+regions[footer] = Footer
+
+settings[shortcut_module_link] = 0

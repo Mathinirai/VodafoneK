@@ -1,0 +1,9 @@
+name = Vodafone AAA Integration
+description = Enables the Vodafone AAA authentication functionality on the developer portal
+core = 7.x
+package = Vodafone Custom
+dependencies[] = entity
+dependencies[] = email_registration
+dependencies[] = menu_item_visibility
+dependencies[] = login_destination
+files[] = vodafone_aaa_integration.test

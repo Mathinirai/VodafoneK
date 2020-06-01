@@ -1,0 +1,236 @@
+<?php
+/**
+ * Implements hook_menu()
+ */
+function vodafone_dynamic_label_menu() {
+	// Sets up a url for a page the form will be accessible from at /my_module
+        $items['admin/config/vodafone/dynamic-label'] = array(
+          'title' => 'Vodafone Dynamic Label',
+          'description' => 'Allow users to create dynamic label.',
+          'weight' => 8,
+          'page callback' => 'drupal_get_form',
+          'page arguments' => array('vodafone_dynamic_label_data_form'),
+          'access arguments' => array('administer vodafone dynamic label'),
+        );
+        $items['admin/config/vodafone/dynamic-label/edit/%'] = array(
+          'title' => 'Vodafone Dynamic Label',
+          'description' => 'Allow users to create dynamic label.',
+          'weight' => 8,
+          'page callback' => 'drupal_get_form',
+          'page arguments' => array('vodafone_dynamic_label_data_form'),
+          'access arguments' => array('administer vodafone dynamic label'),
+        );
+        $items['admin/config/vodafone/dynamic-label/delete/%'] = array(
+          'title' => 'Vodafone Dynamic Label',
+          'description' => 'Allow users to create dynamic label.',
+          'weight' => 8,
+          'page callback' => 'drupal_get_form',
+          'page arguments' => array('vodafone_dynamic_label_data_form'),
+          'access arguments' => array('administer vodafone dynamic label'),
+            'type' => MENU_NORMAL_ITEM,
+        );
+	return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function vodafone_dynamic_label_permission() {
+  return array(
+    'administer vodafone dynamic label' => array(
+      'title' => t('Vodafone Dynamic Label'),
+      'description' => t('Allow users to create dynamic label'),
+      'restrict access' => TRUE,
+    ),  
+  );
+}
+
+/**
+ * Implements hook_form()
+ */
+function vodafone_dynamic_label_data_form($form, &$form_state) {
+        $form = array();
+        $label_data = get_label_list();
+        $action = arg(4);
+        $label_key = $label_value = $field_type = '';
+        if($action == 'edit'){
+          $label_id = arg(5); 
+          $label_key = $label_data[$label_id]['label_key'];
+          $label_value = $label_data[$label_id]['label_value'];
+          $field_type = TRUE;
+          
+        } 
+        else if( $action == 'delete' ) {
+            vodafone_dynamic_label_delete($label_id);
+        }
+        
+        $form['label_key_wapper'] = array(
+            '#type' => 'fieldset',
+        );
+	$form['label_key_wapper']['label_key'] = array(
+		'#title' => t('Label Key'),
+		'#description' => t('Enter label here and make sure starts with page/screen name.'),
+		'#type' => 'textfield',
+		'#required' => TRUE,
+                '#default_value' => $label_key,
+                '#disabled' => $field_type,
+	);
+	$form['label_key_wapper']['label_value'] = array(
+		'#title' => t('Label Value'),
+		'#description' => t('Enter label value here which replace label key in UI.'),
+		'#type' => 'textarea',
+		'#required' => TRUE,
+                '#default_value' => $label_value,
+	);
+	$form['label_key_wapper']['submit'] = array(
+  		'#type' => 'submit',
+  		'#value' => t('Save'),
+	);
+                
+        $header = array(
+            array(
+                'data' => t('Label Key'),
+            ),
+            array(
+                'data' => t('Label Value'),
+            ),
+            array(
+                'data' => t('Update'),
+            ),
+            array(
+                'data' => t('Delete'),
+            ),
+        );
+
+        foreach ($label_data as $label_data_key => $label_data_value) {   
+            $row = array();
+            $row[] = $label_data_value['label_key'];
+            $row[] = $label_data_value['label_value'];
+            $row[] = l('Edit', 'admin/config/vodafone/dynamic-label/edit/'.$label_data_value['label_id']);
+            $row[] = l('Delete', 'admin/config/vodafone/dynamic-label/delete/'.$label_data_value['label_id']);
+            $rows[] = $row;
+        }
+
+        $queue_table = theme_table(array(
+            "header" => $header,
+            "rows" => $rows,
+            "attributes" => array(
+                'class' => array(
+                    'table table-responsive'
+                )
+            ),
+            "sticky" => FALSE,
+            "caption" => "",
+            "colgroups" => array(),
+            "empty" => t(NO_RECORDS_FOUND)
+        )) . theme("pager");
+
+        $form['queue_table'] = array(
+              '#markup' => $queue_table,
+        );
+        
+	return $form;
+}
+
+/**
+ * Implements hook_validate()
+ */ 
+function vodafone_dynamic_label_data_form_validate($form, &$form_state) {
+
+    if(empty(arg(4))){
+        $keys = get_label_list();
+        foreach ($keys as $key => $value) {
+            if($value['label_key'] == $form_state['values']['label_key']){
+                form_set_error('label_key','Label already exist');
+            }
+        }
+    }else {
+        $form_state['input']['op'] = 'Update';
+        $form_state['values']['op'] = 'Update';
+    }
+}
+
+/**
+ * Implements hook_submit()
+ */  
+function vodafone_dynamic_label_data_form_submit($form, &$form_state) {
+    
+    $action =  $form_state['values']['op'];
+    if($action == 'Save') {
+	// Here is where you use the insert the data into your table
+	$log = db_insert('vodafone_dynamic_label') 
+		->fields(array(  
+			'label_key' => $form_state['values']['label_key'],  
+			'label_value' => $form_state['values']['label_value'],  
+		))
+		->execute();
+        if(is_numeric($log) && $log != 0 ){
+            drupal_set_message('Label added successfully.');
+        }
+    } else {
+        $label_id = arg(5);
+        $log = db_update('vodafone_dynamic_label') 
+		->fields(array(  
+			'label_key' => $form_state['values']['label_key'],  
+			'label_value' => $form_state['values']['label_value'],  
+		 ))
+                ->condition('label_id', $label_id, '=')
+		->execute();
+        if(is_numeric($log) && $log != 0 ){
+            drupal_set_message('Label updated successfully.');
+            drupal_goto('admin/config/vodafone/dynamic-label');
+        }
+        
+    }    
+}
+
+/**
+ * Implements hook_custom_get_label()
+ */ 
+function get_label($key) {
+    $key_data = NULL;
+    if(isset($key)) {
+        $query = db_select('vodafone_dynamic_label', 'vdl');
+        $query->fields('vdl', array('label_value'));
+        $query->condition('vdl.label_key', $key , '=');
+        $result = $query->execute();
+        $key_data = $result->fetchField();
+        return $key_data;
+    }
+}
+
+/**
+ * Implements hook_custom_get_label_list()
+ */ 
+function get_label_list() {
+            
+    $query = db_select('vodafone_dynamic_label', 'vdl');
+    $query->fields('vdl', array('label_id','label_key','label_value'));
+    $query->orderBy('vdl.label_key', 'ASC');
+    $result = $query->execute();
+    $rows = array();
+    while ($data = $result->fetchObject()) {
+        $row = array();
+        // Add the org name only if show app name present.
+        $row['label_key'] = $data->label_key;
+        $row['label_value'] = $data->label_value;
+        $row['label_id'] = $data->label_id;
+        $rows[$data->label_id] = $row;
+    }
+    return $rows;
+}
+/**
+ * Implements hook_custom_delete_label()
+ */
+function vodafone_dynamic_label_delete($label_id) {
+    
+    $label_id = arg(5);
+    $log = db_delete('vodafone_dynamic_label')
+    ->condition('label_id', $label_id)
+    ->execute();
+    
+    if(is_numeric($log) && $log != 0 ){
+            drupal_set_message('Label deleted successfully.');
+    }
+    drupal_goto('admin/config/vodafone/dynamic-label');
+}

@@ -1,0 +1,1286 @@
+<?php
+
+/**
+ * @file
+ * Contains AAA Integration code.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function vodafone_aaa_integration_menu() {
+  $items['admin/config/vodafone/vodafone_aaa_integration_config'] = array(
+    'title' => 'Vodafone AAA Integration Settings',
+    'description' => 'Vodafone AAA account, allowed domains and certificates details.',  
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vodafone_aaa_integration_settings_form'),
+    'access arguments' => array('administer aaa integration settings'),
+  );
+  $items['welcome-home'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'vodafone_aaa_integration_welcome_page',
+    'access callback' => 'user_is_logged_in',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function vodafone_aaa_integration_permission() {
+  return array(
+    'administer aaa integration settings' => array(
+      'title' => t('Administer AAA Integration Settings'),
+      'description' => t('Allow users to change the AAA Integration settings'),
+      'restrict access' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Form API callback: AAA Integration settings form.
+ */
+function vodafone_aaa_integration_settings_form($form, &$form_state) {
+  // AAA settings.
+  $form['aaa_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('AAA settings'),
+  );
+  $form['aaa_settings']['vodafone_aaa_integration_enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable AAA Integration'),
+    '#default_value' => variable_get('vodafone_aaa_integration_enabled', 0),
+    '#description' => t('Check this box to enable AAA Integration'),
+  );
+  $form['aaa_settings']['vodafone_aaa_integration_email_domains'] = array(
+    '#type' => 'textarea',
+    '#title' => t('List of email domains to validate against AAA'),
+    '#description' => t('Enter a comma separated list of email domains to be validated against AAA Backend.'),
+    '#default_value' => variable_get('vodafone_aaa_integration_email_domains', ''),
+  );
+  $form['aaa_settings']['vodafone_aaa_integration_endpoint'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Endpoint for AAA authentication'),
+    '#description' => t('The endpoint (hostname or ip:port ) that the application will be calling to authenticate the users.'),
+    '#default_value' => variable_get('vodafone_aaa_integration_endpoint', ''),
+  );
+  // Authentication settings.
+  $form['ba_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Authentication Settings'),
+  );
+  $form['ba_settings']['vodafone_aaa_integration_ba_username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('AAA Basic Authentication Username'),
+    '#description' => t('Enter the username for AAA Basic Authentication.'),
+    '#default_value' => variable_get('vodafone_aaa_integration_ba_username', ''),
+  );
+
+  $form['ba_settings']['vodafone_aaa_integration_ba_password'] = array(
+    '#type' => 'password',
+    '#title' => t('AAA Basic Authentication Password'),
+    '#description' => t('Enter the password for AAA Basic Authentication.'),
+  );
+
+  $certificate = file_load(variable_get('vodafone_aaa_integration_certificate', 0));
+  $form['ba_settings']['vodafone_aaa_integration_certificate'] = array(
+    '#title' => t('Certificate File <br/>'.$certificate->filename),
+    '#type' => 'managed_file',
+    '#description' => t('Upload the ceritificate file required for AAA authentication'),
+    '#upload_location' => 'private://aaa_certificate/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('cert cer pem der key'),
+    ),
+  );
+
+  $priv_key = file_load(variable_get('vodafone_aaa_integration_private_key', 0));
+  $form['ba_settings']['vodafone_aaa_integration_private_key'] = array(
+    '#title' => t('Private Key <br/>'.$priv_key->filename),
+    '#type' => 'managed_file',
+    '#description' => t('Upload the private key file required for AAA authentication'),
+    '#upload_location' => 'private://aaa_certificate/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('cert cer pem der key'),
+    ),
+  );
+  // Proxy settings.
+  $form['proxy_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Proxy Settings'),
+  );
+  $form['proxy_settings']['vodafone_aaa_integration_proxy_enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable proxy for AAA Integration'),
+    '#default_value' => variable_get('vodafone_aaa_integration_proxy_enabled', 0),
+    '#description' => t('Check this box to enable Proxy for AAA Integration'),
+  );
+  
+
+  $form['#submit'][] = 'vodafone_aaa_integration_settings_submit';
+  $form = system_settings_form($form);
+  return $form;
+}
+
+/**
+ * Form submission handler for settings_form().
+ */
+function vodafone_aaa_integration_settings_submit($form, &$form_state) {
+  // If client certificate is not uploaded assign previous certificate id.
+  if ($form_state['values']['vodafone_aaa_integration_certificate'] == "") {
+    $form_state['values']['vodafone_aaa_integration_certificate'] = variable_get('vodafone_aaa_integration_certificate', '');
+  }
+  if ($form_state['values']['vodafone_aaa_integration_certificate'] != variable_get('vodafone_aaa_integration_certificate', 0)) {
+    // Change the file status to permanent so that it does not get removed on
+    // cron.
+    $file = file_load($form_state['values']['vodafone_aaa_integration_certificate']);
+    $file->status = FILE_STATUS_PERMANENT;
+    file_save($file);
+    file_usage_add($file, 'vodafone_aaa_integration', 'vodafone_aaa_integration', 1);
+
+    // Delete the previous certificate file from the system.
+    $old_fid = variable_get('vodafone_aaa_integration_certificate', 0);
+    if ($old_fid > 0) {
+      $old_file = file_load($old_fid);
+      file_usage_delete($old_file, 'vodafone_aaa_integration', 'vodafone_aaa_integration', 1);
+      file_delete($old_file);
+    }
+  }
+
+  // If client certificate is not uploaded assign previous certificate id.
+  if ($form_state['values']['vodafone_aaa_integration_private_key'] == "") {
+    $form_state['values']['vodafone_aaa_integration_private_key'] = variable_get('vodafone_aaa_integration_private_key', '');
+  }
+  if ($form_state['values']['vodafone_aaa_integration_private_key'] != variable_get('vodafone_aaa_integration_private_key', 0)) {
+    // Change the file status to permanent so that it does not get removed on
+    // cron.
+    $file = file_load($form_state['values']['vodafone_aaa_integration_private_key']);
+    $file->status = FILE_STATUS_PERMANENT;
+    file_save($file);
+    file_usage_add($file, 'vodafone_aaa_integration', 'vodafone_aaa_integration', 1);
+
+    // Delete the previous private key file from the system.
+    $old_fid = variable_get('vodafone_aaa_integration_private_key', 0);
+    if ($old_fid > 0) {
+      $old_file = file_load($old_fid);
+      file_usage_delete($old_file, 'vodafone_aaa_integration', 'vodafone_aaa_integration', 1);
+      file_delete($old_file);
+    }
+  }
+
+  if (isset($form_state['values']['vodafone_aaa_integration_ba_password']) && $form_state['values']['vodafone_aaa_integration_ba_password'] == '') {
+    $form_state['values']['vodafone_aaa_integration_ba_password'] = variable_get('vodafone_aaa_integration_ba_password', '');
+  }
+}
+
+/**
+ * Implements hook_menu_alter().
+ *
+ * Modifies access callback for my apps access and change passowrd access.
+ *
+ */
+function vodafone_aaa_integration_menu_alter(&$items) {
+  $items['user/%user/apps']['access callback'] = 'vodafone_aaa_integration_myapps_access';
+  $items['user/%user/change-password']['access callback'] = 'vodafone_aaa_integration_change_password_access';
+}
+
+/**
+ * Access callback function to restrict acces to myapps page.
+ */
+function vodafone_aaa_integration_myapps_access(stdClass $account, $permission, $app_id = NULL) {
+  // Restrict access for authenticated && AAA only users.
+  global $user;
+  $roles = $user->roles;
+  if(user_has_role(3)) {
+    return TRUE;
+  }
+  elseif ((user_has_role(2) && user_has_role(8) && count($roles) == '2') || (user_has_role(2) && count($roles) == '1') || user_is_anonymous()) {
+    return FALSE;
+  }
+  else {
+    return devconnect_developer_apps_access($account, $permission);
+  }
+}
+
+/**
+ * Access callback function to restrict acces to change password
+ */
+function vodafone_aaa_integration_change_password_access() {
+  $aaa_enabled = variable_get('vodafone_aaa_integration_enabled', '');
+  if ($aaa_enabled) {
+    if (user_has_role(3)) {
+      // Check if user is super admin.
+      return TRUE;
+    }
+    elseif (user_has_role(8)) {
+      // Check if user has AAA role and belongs to vodafone.
+      return FALSE;
+    }
+    else {
+      // Non vodafone user.
+      return TRUE;
+    }
+  }
+  else {
+    return TRUE;
+  }
+}
+
+/**
+ * Implements hook_form_alter() for user login, user password and profile form.
+ */
+function vodafone_aaa_integration_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  if ($form_id == 'user_login') {
+    if (isset($_GET['redirect'])) {
+      $_SESSION['redirect_uri'] = check_url($_GET['redirect']);
+      $_GET['destination'] = check_url($_GET['redirect']);
+    }
+    // Initilaize javascript to set cookie for vodafone internal/extrenal user.
+    if (isset($_GET['invite_token'])) {
+      $invite = vodafone_organization_load_invite_by_token(check_plain($_GET['invite_token']));
+      $form['invite'] = array(
+        '#type' => 'value',
+        '#value' => $invite,
+      );
+    }
+
+    $form['actions']['submit']['#attributes'] = array('class' => array('btn btn-primary'));
+    $form['#validate'] = array('captcha_after_form_validate', 'vodafone_aaa_integration_user_login_validate');
+    $form['#submit'] = array('vodafone_aaa_integration_user_login_submit');
+  }
+  if ($form_id == 'views_exposed_form') {
+    $form['submit']['#attributes'] = array('class' => array('btn btn-primary'));
+  }
+  if ($form_id == 'user_pass') {
+    $form['#validate'] = array('vodafone_aaa_integration_user_pass_validate');
+  }
+
+  $aaa_enabled = variable_get('vodafone_aaa_integration_enabled', '');
+  // Disable user profile fields for AAA user.
+  if ($aaa_enabled) {
+    if ($form_id == 'user_profile_form') {
+      if (array_key_exists('8', $user->roles)) {
+        $form['field_first_name']['#disabled'] = TRUE;
+        $form['field_last_name']['#disabled'] = TRUE;
+        $form['field_user_phone']['#disabled'] = TRUE;
+        $form['field_user_company']['#disabled'] = TRUE;
+        $form['field_user_department']['#disabled'] = TRUE;
+
+        $form['account']['mail']['#disabled'] = TRUE;
+        $form['account']['name']['#disabled'] = TRUE;
+        $form['account']['status']['#disabled'] = TRUE;
+      }
+    }
+  }
+}
+
+/**
+ * Menu callback: Returns the rendered welcome page for non admin users.
+ */
+function vodafone_aaa_integration_welcome_page() {
+  $nid = variable_get('vodafone_welcome_page_nid', 0);
+  $node = node_load($nid);
+  if ($nid == 0 || $node === FALSE) {
+    drupal_set_title('Welcome');
+    return t('Welcome to Vodafone Developer Ecosystem');
+  }
+  $node = node_load($nid);
+  drupal_set_title($node->title);
+  unset($node->title);
+  $output = node_view($node, 'full');
+  return drupal_render($output);
+}
+
+/**
+ * Form validation handler for user_login_form().
+ *
+ * @see vodafone_aaa_integration_user_login_submit()
+ */
+function vodafone_aaa_integration_user_login_validate($form, &$form_state) {
+  // Check if valid email address is entered.
+  $form_state['input']['name'] = trim($form_state['input']['name']);
+  if (!isset($form_state['input']['name']) || !valid_email_address($form_state['input']['name'])) {
+    form_set_error('name', t('Please enter valid email address', array('%name' => $user_email)));
+    return $form;
+  }
+
+  $email = $form_state['input']['name'];
+  $password = $form_state['input']['pass'];
+
+  // Check is AAA Integration Enabled.
+  $aaa_enabled = variable_get('vodafone_aaa_integration_enabled');
+
+  if (isset($aaa_enabled) && $aaa_enabled == 1) {
+    // Check if email is AAA email.
+    $is_aaa_email = vodafone_aaa_integration_is_aaa_email($email);
+
+    if ($is_aaa_email) {
+      return $is_aaa_email;
+    }
+  }
+
+  // If AAA integration is not enabled
+  // or email is not part of AAA then validate them in drupal.
+  return vodafone_aaa_integration_user_login_drupal_validate($form, $form_state);
+}
+
+/**
+ * Form validation handler for user_login_form() if drupal user.
+ */
+function vodafone_aaa_integration_user_login_drupal_validate($form, &$form_state) {
+  $otp_enabled_NONAAA = variable_get('vodafone_symantec_integration_otp_enabled', 0);
+
+  $user_email = $form_state['input']['name'];
+  $user_password = $form_state['input']['pass'];
+
+  $user_blocked = db_select('users')
+    ->fields('users', array('name'))
+    ->condition('mail', db_like($user_email), 'LIKE')
+    ->condition('status', 0)
+    ->execute()->fetchObject();
+
+  if (!empty($user_email) && $user_blocked) {
+    // Blocked in user administration.
+    form_set_error('name', t('The user %name has not been activated or is blocked.', array('%name' => $user_email)));
+    return $form;
+  }
+
+  $password = trim($user_password);
+  if (!empty($user_email) && !empty($password)) {
+
+    if (!flood_is_allowed('failed_login_attempt_ip', variable_get('user_failed_login_ip_limit', 50), variable_get('user_failed_login_ip_window', 3600))) {
+      $form_state['flood_control_triggered'] = 'ip';
+      return $form;
+    }
+    $account = db_select('users')
+      ->fields('users', array('uid', 'name', 'mail'))
+      ->condition('status', 1)
+      ->condition('mail', db_like($user_email), 'LIKE')
+      ->execute()->fetchObject();
+    if ($account) {
+      if (variable_get('user_failed_login_identifier_uid_only', FALSE)) {
+        $identifier = $account->uid;
+      }
+      else {
+        $identifier = $account->uid . '-' . ip_address();
+      }
+      $form_state['flood_control_user_identifier'] = $identifier;
+      if (!flood_is_allowed('failed_login_attempt_user', variable_get('user_failed_login_user_limit', 5), variable_get('user_failed_login_user_window', 21600), $identifier)) {
+        $form_state['flood_control_triggered'] = 'user';
+      }
+    }
+
+    $form_state['uid'] = vodafone_aaa_integration_user_authenticate_by_mail($account->mail, $password);
+  }
+
+  if (empty($form_state['uid']) || $form_state['uid'] == "" || $form_state['uid'] == NULL || !($form_state['uid'])) {
+    // Always register an IP-based failed login event.
+    flood_register_event('failed_login_attempt_ip', variable_get('user_failed_login_ip_window', 3600));  //commenting this as we dont need ip based blocking.
+    // Register a per-user failed login event.
+    if (isset($form_state['flood_control_user_identifier'])) {
+      flood_register_event('failed_login_attempt_user', variable_get('user_failed_login_user_window', 21600), $form_state['flood_control_user_identifier']);
+    }
+
+    if (isset($form_state['flood_control_triggered'])) {
+      if ($form_state['flood_control_triggered'] == 'user') {
+        form_set_error('name', format_plural(variable_get('user_failed_login_user_limit', 5), 'Sorry, there has been one failed login attempt for this account. It is temporarily blocked. Try again later.', 'Sorry, there have been @count failed login attempts for this account. It is temporarily blocked. Try again later.'));
+      }
+      else {
+        // We did not find a uid, so the limit is IP-based.
+        form_set_error('name', t('Sorry, too many failed login attempts from your IP address. This IP address is temporarily blocked. Try again later or <a href="@url">request a new password</a>.', array('@url' => url('user/password'))));
+      }
+      return $form;
+    }
+    else {
+      form_set_error('name', t('Sorry, unrecognized user with email or password. <a href="@password">Have you forgotten your password?</a>', array('@password' => url('user/password', array('query' => array('name' => $form_state['input']['name']))))));
+      watchdog('user', 'Login attempt failed for %user.', array('%user' => $form_state['input']['name']));
+      return $form;
+    }
+  }
+  else {
+    //Checking count of Invalid attempts.
+    $identifier = $form_state['uid'] . '-' . ip_address();
+    if (!flood_is_allowed('failed_login_attempt_user', variable_get('user_failed_login_user_limit', 5), variable_get('user_failed_login_user_window', 21600),  $identifier)) {
+      form_set_error('otp', format_plural(variable_get('user_failed_login_user_limit', 5), 'Sorry, there has been one failed login attempt for this account. It is temporarily blocked. Try again later.', 'Sorry, there have been @count failed login attempts for this account. It is temporarily blocked. Try again later.'));
+      drupal_goto('user/login');
+    }
+    if (isset($form_state['flood_control_user_identifier']) && !$otp_enabled_NONAAA) {
+      flood_clear_event('failed_login_attempt_user', $form_state['flood_control_user_identifier']);
+      return $form;
+    }
+
+    // Check count for OTP , and dont allow user to login if otp count exceeds.
+    $office_net_enabled = variable_get('vodafone_symantec_integration_office_enabled', 0);
+    if($office_net_enabled) {
+      $user_in_network = trim(vodafone_check_user_network());
+    }
+    else {
+      $user_in_network = 'false';
+    }
+    // Check if user is NON-AAA user.
+    if ($otp_enabled_NONAAA && !vodafone_aaa_integration_is_aaa_email($user_email) && $user_in_network == 'false') {
+      // Check for another flood for otps.
+      $time_span = 600;
+      $start_time = time() - $time_span;
+      $end_time = time();
+      $query = db_select('vodafone_tfa_otp_audit', 'otp_audit');
+      $query->fields('otp_audit', array('otp_requested_id'));
+      $query->condition('tfa_user_email', $user_email);
+      $query->condition('timestamp', array($start_time, $end_time), 'BETWEEN');
+      $result = $query->execute();
+      $count = $result->rowCount();
+      if ($count >= 5) {
+        form_set_error('name', 'You have exceeded maximum number of attempts for OTP. Please wait for sometime and try again later.');
+      }
+    }
+  }
+  return TRUE;
+}
+
+/**
+ * Form submission handler for user_login_form().
+ *
+ * @see vodafone_aaa_integration_user_login_validate()
+ */
+function vodafone_aaa_integration_user_login_submit($form, &$form_state) {
+  global $user,$base_root;
+
+  // Redirect to welcome page if login from user password page, causing AAA user login.
+  if (isset($_GET['destination']) && ($_GET['destination'] == 'user/password')) {
+    $_GET['destination'] = 'node/1';
+  }
+
+  $email = $form_state['input']['name'];
+  $password = $form_state['input']['pass'];
+
+  // Checking userid.
+  $user_aaa = user_load_by_mail($email);
+  if (!empty($user_aaa->uid)) {
+    $user_identity = $user_aaa->uid;
+  }
+  else {
+    $user_identity = ip_address();
+  }
+  //Checking count of Invalid attempts.
+  if (!flood_is_allowed('failed_login_attempt_user', variable_get('user_failed_login_user_limit', 5), variable_get('user_failed_login_user_window', 21600),  $user_identity)) {
+    form_set_error('name', format_plural(variable_get('user_failed_login_user_limit', 5), 'Sorry, there has been more than one failed login attempt for this account. It is temporarily blocked. Try again later.', 'Sorry, there have been more than @count failed login attempts for this account. It is temporarily blocked. Try again later.'));
+    drupal_goto("user/login");
+  }
+  $log_status = "Failure";
+  $error_message = "";
+
+  // Get AAA integration option.
+  $aaa_enabled = variable_get('vodafone_aaa_integration_enabled', 0);
+
+  // Check if AAA integration is enabled.
+  if (isset($aaa_enabled) && $aaa_enabled == 1) {
+    // Check if email is AAA email.
+    $is_aaa_email = vodafone_aaa_integration_is_aaa_email($email);
+    if ($is_aaa_email) {
+      // Get AAA end point.
+      $aaa_end_point = variable_get('vodafone_aaa_integration_endpoint', '');
+
+      // Get authentication credentials.
+      $ba_username = variable_get('vodafone_aaa_integration_ba_username', '');
+      $ba_password = variable_get('vodafone_aaa_integration_ba_password', '');
+
+      $ba_certificate_id = variable_get('vodafone_aaa_integration_certificate', 0);
+      $ba_certificate = file_load($ba_certificate_id);
+      $ba_certificate_url_obj = file_stream_wrapper_get_instance_by_uri($ba_certificate->uri);
+      $ba_certificate_url = (!empty($ba_certificate_url_obj)) ? $ba_certificate_url_obj ->realpath() : '';
+
+      $ba_priv_key_id = variable_get('vodafone_aaa_integration_private_key', 0);
+      $ba_priv_key = file_load($ba_priv_key_id);
+      $ba_priv_key_url_obj = file_stream_wrapper_get_instance_by_uri($ba_priv_key->uri);
+      $ba_priv_key_url = (!empty($ba_priv_key_url_obj)) ? $ba_priv_key_url_obj ->realpath() : '';
+
+      if ($ba_username == '' || $ba_password == '') {
+        $error_id = "BA_CREDENTIALS_ERROR";
+        $error = "Authentication credentials are missing";
+        vodafone_aaa_integration_gig_error_handling($error_id, $error, $error_message);
+      }
+      else {
+        $autentication_encode = base64_encode($ba_username . ":" . $ba_password);
+
+        $url = $aaa_end_point . "aaa/auth/encryptionkey";
+
+        // Get proxy settings.
+        $proxy_enabled = variable_get('vodafone_aaa_integration_proxy_enabled', 0);
+        $proxy = '';
+        if (isset($proxy_enabled) && $proxy_enabled == 1) {
+          $proxy_hostname = variable_get('proxy_host', '');
+          $proxy_port = variable_get('proxy_port', '');
+          $proxy = $proxy_hostname.":".$proxy_port;
+        }
+
+        $headr = array();
+        $headr[] = 'Content-type: application/xml';
+        $headr[] = 'Authorization: Basic ' . $autentication_encode;
+        $headr[] = 'Accept: application/xml';
+        $headr[] = 'User-Agent: DeveloperPortal';
+
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $url);
+        // If proxy is enabled set the proxy in cURL.
+        if (isset($proxy_enabled) && $proxy_enabled == 1) {
+          curl_setopt($curl, CURLOPT_PROXY, $proxy);
+        }
+        curl_setopt($curl, CURLOPT_HTTPHEADER,$headr);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
+        curl_setopt($curl, CURLOPT_SSLCERT, $ba_certificate_url);
+        curl_setopt($curl, CURLOPT_SSLKEY, $ba_priv_key_url);
+        //Send the request & save response to $user_account_resp
+        $x509_resp = curl_exec($curl);
+        $x509_curl_errno = curl_errno($curl);
+        $x509_curl_error = curl_error($curl);
+        curl_close($curl);
+        // Handle cURL errors.
+        if ($x509_curl_errno > 0) {
+          vodafone_aaa_integration_curl_error_handling($x509_curl_errno, 'Encryptionkey Call => cURL => ' . $x509_curl_error, $error_message);
+        }
+        else {
+          // Generate RSA PublicKey and encrypt password.
+          $x509_resp_xml = simplexml_load_string($x509_resp);
+
+          if (!empty($x509_resp_xml) || $x509_resp_xml != '') {
+            $hexstring = $x509_resp_xml[0];
+            $derformat = hexbin($hexstring);
+
+            $public_key = der2pem($derformat);
+
+            // Load PHP RSA Library.
+             // Load PHP RSA Library.
+            $phpsec_lib_path = function_exists('libraries_get_path') ? libraries_get_path('phpseclib') : 'sites/all/libraries/phpseclib';
+            require_once $phpsec_lib_path . '/Crypt/RSA.php';
+            require_once $phpsec_lib_path . '/Math/BigInteger.php';
+            require_once $phpsec_lib_path . '/Crypt/Hash.php';
+            require_once $phpsec_lib_path . '/Crypt/Random.php';
+
+            $rsa = new \phpseclib\Crypt\RSA();
+            $rsa->loadKey($public_key); // public key
+            $rsa->setEncryptionMode(\phpseclib\Crypt\RSA::ENCRYPTION_PKCS1);
+            $ciphertext = $rsa->encrypt($password);
+            $hex_pass = bin2hex($ciphertext);
+
+            // Call GIG url and get session if valid user details.
+            $url = $aaa_end_point . "aaa/auth/DeveloperPortal/" . urlencode($email);
+            $input_xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><AuthenticateAccountRequest><password>".$hex_pass."</password></AuthenticateAccountRequest>";
+
+            // Get cURL resource.
+            $curl = curl_init();
+            curl_setopt($curl, CURLOPT_URL, $url);
+            // If proxy is enabled set the proxy in cURL.
+            if (isset($proxy_enabled) && $proxy_enabled == 1) {
+              curl_setopt($curl, CURLOPT_PROXY, $proxy);
+            }
+            curl_setopt($curl, CURLOPT_HTTPHEADER,$headr);
+            curl_setopt($curl, CURLOPT_POST,true);
+            curl_setopt($curl, CURLOPT_POSTFIELDS,$input_xml);
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
+            curl_setopt($curl, CURLOPT_SSLCERT, $ba_certificate_url);
+            curl_setopt($curl, CURLOPT_SSLKEY, $ba_priv_key_url);
+            // Send the request & save response to $session_resp.
+            $session_resp = curl_exec($curl);
+            $session_curl_errno = curl_errno($curl);
+            $session_curl_error = curl_error($curl);
+            curl_close($curl);
+
+            $session_xml = simplexml_load_string(preg_replace("/(<\/?)(\w+):([^>]*>)/", "$1$2$3", $session_resp));
+
+            // Handle cURL errors.
+            if ($session_curl_errno > 0) {
+              vodafone_aaa_integration_curl_error_handling($session_curl_errno, 'Authenticate Account => cURL => ' . $session_curl_error, $error_message);
+            }
+            else {
+              if (!empty($session_xml) && !isset($session_xml->ns2messageId)) {
+                $session_id = $session_xml->sessionId;
+                $_SESSION['aaa_sessid'] = trim($session_id);
+
+                // Call GIG url to get AAA user details from session_id.
+                $url = $aaa_end_point . "aaa/auth/DeveloperPortal/" . $session_id . "/account";
+
+                $curl = curl_init();
+                curl_setopt($curl, CURLOPT_URL, $url);
+                // If proxy is enabled set the proxy in cURL.
+                if (isset($proxy_enabled) && $proxy_enabled == 1) {
+                  curl_setopt($curl, CURLOPT_PROXY, $proxy);
+                }
+                curl_setopt($curl, CURLOPT_HTTPHEADER,$headr);
+                curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+                curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
+                curl_setopt($curl, CURLOPT_SSLCERT, $ba_certificate_url);
+                curl_setopt($curl, CURLOPT_SSLKEY, $ba_priv_key_url);
+                //Send the request & save response to $user_account_resp
+                $user_account_resp = curl_exec($curl);
+                $user_account_curl_errno = curl_errno($curl);
+                $user_account_curl_error = curl_error($curl);
+                curl_close($curl);
+
+                $user_account_xml = simplexml_load_string(preg_replace("/(<\/?)(\w+):([^>]*>)/", "$1$2$3", $user_account_resp));
+
+                // Handle cURL errors.
+                if ($user_account_curl_errno > 0) {
+                  vodafone_aaa_integration_curl_error_handling($user_account_curl_errno, 'Getting Account => cURL => ' . $user_account_curl_error, $error_message);
+                }
+                else {
+                  if (!empty($user_account_xml) && !isset($user_account_xml->ns2messageId)) {
+                    $aaa_user_f_name = (string) $user_account_xml->firstname;
+                    $aaa_user_l_name = (string) $user_account_xml->surname;
+                    $aaa_user_phone = (string) $user_account_xml->phone;
+                    $aaa_user_company = (string) $user_account_xml->company;
+                    $aaa_user_department = (string) $user_account_xml->department;
+
+                    $account = user_load_by_mail($email);
+
+                    // If AAA user account already exists get his roles and add AAA User role
+                    // else create new account with AAA User role and
+                    // update user properties from AAA.
+                    $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+                    $aaa_user_random_password = '';
+                    for ($i = 0; $i < 10; $i++) {
+                      $aaa_user_random_password .= $characters[rand(0, strlen($characters) - 1)];
+                    }
+
+                    if ($account) {
+                      $user_identity = $account->uid;
+
+                      $user_roles = $account->roles;
+                      if (!array_key_exists('7', $user_roles)) {
+                        $user_roles[7]  = 'AAA user';
+                      }
+
+                      $edit = array(
+                        //'pass' => $aaa_user_random_password,  //Adding password to this array cause user to logout if loggedin in more then one browser.
+                        'roles' => $user_roles,
+                        'field_first_name' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_f_name,
+                            ),
+                          ),
+                        ),
+                        'field_last_name' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_l_name,
+                            ),
+                          ),
+                        ),
+                        'field_user_phone' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_phone,
+                            ),
+                          ),
+                        ),
+                        'field_user_company' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_company,
+                            ),
+                          ),
+                        ),
+                        'field_user_department' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_department,
+                            ),
+                          ),
+                        ),
+                      );
+
+                      //  Call two factor authentication checks before user save.
+                      // Check if Symantec enabled for AAA.
+                      $symantec_enabled_AAA = variable_get('vodafone_symantec_integration_enabled', 0);
+                      $office_net_enabled = variable_get('vodafone_symantec_integration_office_enabled', 0);
+                      $_SESSION['vf_tfa'] = '';
+                      if($symantec_enabled_AAA) {
+                        if($office_net_enabled) {
+                          $user_in_network = trim(vodafone_check_user_network());
+                        }
+                        if($user_in_network == 'false' || !$office_net_enabled) {
+                          if (!isset($_SESSION['vf_tfa']) ||  empty($_SESSION['vf_tfa'])) {
+                            $_SESSION['vf_tfa'] = array ($account, 'symantec', $edit);
+                            if(isset($_GET['destination'])) {
+                              unset($_GET['destination']);
+                            }
+                            drupal_static_reset('drupal_get_destination');
+                            drupal_goto('confirmidentity');
+                          }
+                        }
+                      }
+                      else {
+                        // Update user with AAA details.
+                        user_save($account, $edit);
+                      }
+                    }
+                    else {
+                      $user_identity = ip_address();
+
+                      $new_user = array(
+                        'name' => strtolower($email),
+                        'pass' => $aaa_user_random_password,
+                        'mail' => strtolower($email),
+                        'status' => 1,
+                        'init' => $email,
+                        'roles' => array(
+                          DRUPAL_AUTHENTICATED_RID => 'authenticated user',
+                          7 => 'AAA user',
+                        ),
+                        'field_first_name' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_f_name,
+                            ),
+                          ),
+                        ),
+                        'field_last_name' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_l_name,
+                            ),
+                          ),
+                        ),
+                        'field_user_phone' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_phone,
+                            ),
+                          ),
+                        ),
+                        'field_user_company' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_company,
+                            ),
+                          ),
+                        ),
+                        'field_user_department' => array(
+                          'und' => array(
+                            0 => array(
+                              'value' => $aaa_user_department,
+                            ),
+                          ),
+                        ),
+                      );
+
+                      if (isset($form_state['values']['invite'])) {
+                        $new_user['invite'] = $form_state['values']['invite'];
+                      }
+
+                      //  Call two factor authentication checks before user save.
+                      // Check if Symantec enabled for AAA.
+                      $symantec_enabled_AAA = variable_get('vodafone_symantec_integration_enabled', 0);
+                      $office_net_enabled = variable_get('vodafone_symantec_integration_office_enabled', 0);
+                      $_SESSION['vf_tfa'] = '';
+                      
+                      if($symantec_enabled_AAA) {
+                        if($office_net_enabled) {
+                          $user_in_network = trim(vodafone_check_user_network());
+                        }
+                        if($user_in_network == 'false' || !$office_net_enabled) {
+                          if (!isset($_SESSION['vf_tfa']) ||  empty($_SESSION['vf_tfa'])) {
+                            $_SESSION['vf_tfa'] = array ($new_user, 'symantec');
+                            if(isset($_GET['destination'])) {
+                              unset($_GET['destination']);
+                            }
+                            drupal_static_reset('drupal_get_destination');
+                            drupal_goto('confirmidentity');
+
+                          }
+                        }
+                        else {
+                          // The first parameter is sent blank so a new user is created.
+                          user_save('', $new_user);
+                        }
+                      }
+                      else {
+                        // The first parameter is sent blank so a new user is created.
+                        user_save('', $new_user);
+                      }
+                    }
+                    $log_status = "Success";
+                    vodafone_aaa_integration_log_user_login($email, $log_status, $error_message);
+
+                    // If valid AAA user and got session, login him in Drupal.
+                    $user = user_load_by_mail($email);
+                    $form_state['uid'] = $user->uid;
+                  }
+                  else {
+                    // Handle error/bad response from GIG/AAA Account API.
+                    vodafone_aaa_integration_gig_error_handling($user_account_xml->ns2messageId, 'Getting Account => GIG => ' . $user_account_xml->ns2text, $error_message);
+                  }
+                }
+              }
+              else {
+                // Logging invalid attempts.
+                if ($session_xml->ns2messageId == "INVALID_CREDENTIALS") {
+                  if(variable_get('portal_activity_log')){
+                    $message = array(
+                      'timestamp'   => date('d/m/Y:h:m:s'),
+                      'base_url'    => $base_root,
+                      'type'        => 'vodafone_aaa_integration_user_login_submit',
+                      'ip'          => ip_address(),
+                      'request_uri' => $base_root . request_uri(),
+                      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+                      'uid'         => $user->uid,
+                      'mail'        => $form_state['values']['name'],
+                      'operation'   => 'User:failed',
+                      'message'     => 'Login attempt failed for '.$form_state['values']['name'],
+                    );
+                    vf_configs_custom_log($message);
+                  }  
+                  flood_register_event('failed_login_attempt_user', variable_get('user_failed_login_user_window', 21600), $user_identity);
+                }
+                // Handle error/bad response from GIG/AAA Auth API.
+                vodafone_aaa_integration_gig_error_handling($session_xml->ns2messageId, 'Authenticate Account => GIG => ' . $session_xml->ns2text, $error_message);
+              }
+            }
+          }
+          else {
+            // Handle error/bad response from GIG/AAA encryptionkey API.
+            $error_id = "NO_X509_PUB_KEY";
+            $error = "Encryptionkey Call => GIG => Unable to get x509 publickey";
+            vodafone_aaa_integration_gig_error_handling($error_id, $error, $error_message);
+          }
+        }
+      }
+
+      if (!isset($form_state['uid']) || ($form_state['uid'] == '')) {
+        // Make a AAA user login entry into table.
+        vodafone_aaa_integration_log_user_login($email, $log_status, $error_message);
+        return $form;
+      }
+    }
+    // Email OTP TFA code for non AAA.
+    else {
+      // Check if email otp is enabled.
+      $otp_enabled_NONAAA = variable_get('vodafone_symantec_integration_otp_enabled', 0);
+      if($otp_enabled_NONAAA) {
+        // function call to send OTP.
+        send_otp($email);
+      }
+      else {
+        // If valid drupal user login him.
+        $user = user_load($form_state['uid']);
+        $form_state['redirect'] = 'user/' . $user->uid . '/edit';
+        user_login_finalize($form_state);
+        if(variable_get('portal_activity_log')){
+          $message = array(
+            'timestamp'   => date('d/m/Y:h:m:s'),
+            'base_url'    => $base_root,
+            'type'        => 'vodafone_aaa_integration_user_login_submit',
+            'ip'          => ip_address(),
+            'request_uri' => $base_root . request_uri(),
+            'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+            'uid'         => $user->uid,
+            'mail'        => $user->mail,
+            'operation'   => 'User:login',
+            'message'     => 'User logged in successfully.',
+          );
+          vf_configs_custom_log($message);                
+        }
+      }
+    }
+  }
+  // AAA is disabled then all users will be considered NON AAA and go for OTP.
+  else {
+    // Check if email otp is enabled.
+    $otp_enabled_NONAAA = variable_get('vodafone_symantec_integration_otp_enabled', 0);
+    if($otp_enabled_NONAAA) {
+      // function call to send OTP.
+      send_otp($email);
+    }
+    else {
+      // If valid drupal user login him.
+      $user = user_load($form_state['uid']);
+      $form_state['redirect'] = 'user/' . $user->uid . '/edit';
+      user_login_finalize($form_state);
+    }
+  }
+
+  // If valid drupal user login him.
+  $user = user_load($form_state['uid']);
+  $form_state['redirect'] = 'user/' . $user->uid . '/edit';
+  if(variable_get('portal_activity_log')){
+    $message = array(
+      'timestamp'   => date('d/m/Y:h:m:s'),
+      'base_url'    => $base_root,
+      'type'        => 'vodafone_aaa_integration_user_login_submit',
+      'ip'          => ip_address(),
+      'request_uri' => $base_root . request_uri(),
+      'referer'     => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '',
+      'uid'         => $user->uid,
+      'mail'        => $user->mail,
+      'operation'   => 'User:login',
+      'message'     => 'User logged in successfully.',
+    );
+    vf_configs_custom_log($message);
+  }
+  drupal_session_regenerate($form_state);
+
+  // Clear flood event.
+  flood_clear_event('failed_login_attempt_user', $form_state['flood_control_user_identifier']);
+  flood_clear_event('failed_login_attempt_user', $user_identity);
+
+  // Clear captcha_after.
+  captcha_after_form_submit($form, $form_state);
+
+  // Role based redirection.
+  vodafone_aaa_integration_redirect($user);
+}
+
+/**
+ * Converts der data to pem.
+ *
+ * @param binary $der_data
+ *   The raw binary data of x509 public key to convert.
+ *
+ * @return pem public key
+ *   Public Key in pem format.
+ */
+function der2pem($der_data) {
+   $pem = chunk_split(base64_encode($der_data), 64, "\n");
+   $pem = "-----BEGIN PUBLIC KEY-----\n".$pem."-----END PUBLIC KEY-----\n";
+   return $pem;
+}
+
+/**
+ * Authenticate user details by email.
+ *
+ * @param string $mail
+ *   The user email address.
+ * @param string $password
+ *   The user entered password.
+ *
+ * @return int uid
+ *   FALSE if user doesn't exists, uid if user exists .
+ */
+function vodafone_aaa_integration_user_authenticate_by_mail($mail, $password) {
+  $uid = FALSE;
+  if (!empty($mail) && !empty($password)) {
+    $account = user_load_by_mail($mail);
+    if ($account) {
+      //Allow alternate password hashing schemes.
+      require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+      if (user_check_password($password, $account)) {
+        //Successful authentication.
+        $uid = $account->uid;
+      }
+    }
+  }
+  return $uid;
+}
+
+/**
+ * Get user IP.
+ *
+ * @return string
+ *   The X-Forwarded-For of user browser.
+ */
+function get_ip() {
+    // Just get the headers if we can or else use the SERVER global.
+  if ( function_exists( 'apache_request_headers' ) ) {
+    $headers = apache_request_headers();
+  }
+  else {
+  	$headers = $_SERVER;
+  }
+  // Get the forwarded IP if it exists.
+  if (array_key_exists('X-Forwarded-For', $headers) && filter_var($headers['X-Forwarded-For'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+  	$the_ip = $headers['X-Forwarded-For'];
+  }
+  elseif (array_key_exists('HTTP_X_FORWARDED_FOR', $headers) && filter_var($headers['HTTP_X_FORWARDED_FOR'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+  	$the_ip = $headers['HTTP_X_FORWARDED_FOR'];
+  }
+  else {
+    $the_ip = filter_var($_SERVER['REMOTE_ADDR'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+  }
+  return $the_ip;
+}
+
+/**
+ * Convert hex to binary.
+ *
+ * @param string $hexstr
+ *   The hex string.
+ *
+ * @return string $sbin
+ *   The binary string.
+ */
+function hexbin($hexstr) {
+  $n = strlen($hexstr);
+  $sbin = "";
+  $i = 0;
+
+  while ($i < $n) {
+    $a = substr($hexstr, $i, 2);
+    $c = pack("H*", $a);
+
+    if ($i == 0) {
+      $sbin = $c;
+    }
+    else {
+      $sbin .= $c;
+    }
+    $i+=2;
+  }
+  return $sbin;
+}
+
+/**
+ * Handle CURL errors, show message to user and log record to the table.
+ *
+ * @param int $error_id
+ *   The curl error id.
+ * @param string $error
+ *   The curl error message in words.
+ * @param string &$error_message
+ *   The reference to the log error message that stored in table.
+ */
+function vodafone_aaa_integration_curl_error_handling($error_id, $error, &$error_message) {
+  $error_message = ($error != '') ? $error : $error_message;
+
+  watchdog('AAA CURL error', 'Error id: ' . $error_id . ' | Error message: ' . $error_message);
+
+  switch ($error_id) {
+    // Wrong GIG url, Host not resolved error.
+    case 6:
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+
+    // Connection timeout error.
+    case 28:
+      form_set_error('name', t('Request Timed out. Please try to login again.'));
+      break;
+
+    // SSL Certificate error.
+    case 35:
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+
+    // If any other unknown errors.
+    default:
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+  }
+}
+
+/**
+ * Handle GIG/AAA errors, show message to user and log record to the table.
+ *
+ * @param int $error_id
+ *   The curl error id.
+ * @param string $error
+ *   The curl error message in words.
+ * @param string &$error_message
+ *   The reference to the log error message that stored in table.
+ */
+function vodafone_aaa_integration_gig_error_handling($error_id, $error, &$error_message) {
+  $error_message = ($error != '') ? $error : $error_message;
+
+  if ($error_message == '' || $error_message == NULL) {
+    $error_message = "No response from GIG/AAA, Please check GIG URL's are correct";
+  }
+
+  watchdog('AAA GIG error', 'Error id: ' . $error_id . ' | Error message: ' . $error_message);
+
+  switch ($error_id) {
+    // Wrong AAA username or password.
+    case "INVALID_CREDENTIALS":
+      form_set_error('name', t('You entered invalid Email and/or Password combination. Please login with your <b>public Email & Windows credentials</b> and try again.'));
+      break;
+
+    // If AAA user is authenticated but unable to get account details.
+    case "INVALID_SESSION":
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+
+    // Authentication credentials are not entered.
+    case "BA_CREDENTIALS_ERROR":
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+
+    // If X509 Public key did not received.
+    case "NO_X509_PUB_KEY":
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+
+    // If any other unknown errors.
+    default:
+      form_set_error('name', t('Login via AAA Failed. Please contact your administrator.'));
+      break;
+  }
+}
+
+/**
+ * Form validation handler for user_pass_form().
+ */
+function vodafone_aaa_integration_user_pass_validate($form, &$form_state) {
+  $email = $form_state['values']['name'];
+
+  // Check is AAA Integration Enabled.
+  $aaa_enabled = variable_get('vodafone_aaa_integration_enabled');
+
+  if (isset($aaa_enabled) && $aaa_enabled == 1) {
+    $is_aaa_email = vodafone_aaa_integration_is_aaa_email($email);
+    // Check if user is from AAA.
+    if ($is_aaa_email) {
+      form_set_error('name', t('Sorry, password cannot be reset for AAA user. Please reset your password at https://password.vodafone.com.'));
+      return TRUE;
+    }
+  }
+
+  // If AAA integration is not enabled
+  // or email is not part of AAA then validate them in drupal.
+  return vodafone_aaa_integration_user_pass_drupal_validate($form, $form_state);
+}
+
+/**
+ * Form validation handler for user_pass_form() if drupal user.
+ */
+function vodafone_aaa_integration_user_pass_drupal_validate($form, &$form_state) {
+  $name = trim($form_state['values']['name']);
+  // Try to load by email.
+  $users = user_load_multiple(array(), array('mail' => $name, 'status' => '1'));
+  $account = reset($users);
+
+  if (isset($account->uid)) {
+    form_set_value(array('#parents' => array('account')), $account, $form_state);
+  }
+}
+
+/**
+ * Writes a AAA user log record to the tables.
+ *
+ * @param string $user_mail
+ *   The user mail.
+ * @param string $log_status
+ *   The log status Success if user is authenticated
+ *   and Fialure if user is not authenticated.
+ * @param string $error_message
+ *   The error message if authentication fails.
+ *
+ * @return bool
+ *   False if the record was not saved, SAVED_NEW or SAVED_UPDATED on success.
+ */
+function vodafone_aaa_integration_log_user_login($user_mail, $log_status, $error_message) {
+  //Log the AAA user status
+  $aaa_login_history = array(
+    'user_name' => $user_mail,
+    'login_attempt_at' => strtotime('now'),
+    'login_status' => $log_status,
+    'error_message' => $error_message,
+    'x_forward' => get_ip(),
+  );
+
+  $saved = drupal_write_record('vodafone_aaa_user_login_history', $aaa_login_history);
+
+  return $saved;
+}
+
+
+function vodafone_aaa_integration_is_aaa_email($email) {
+  $aaa_email_domains_string = variable_get('vodafone_aaa_integration_email_domains', '');
+
+  if ($aaa_email_domains_string != '') {
+    $aaa_email_domains_array = explode(',', $aaa_email_domains_string);
+    if (!empty($aaa_email_domains_array)) {
+      $aaa_email_domains_trim_array = array_map('trim', $aaa_email_domains_array);
+      $aaa_email_domains_lowercase_array = array_map('strtolower', $aaa_email_domains_trim_array);
+    }
+  }
+
+  // Get the email domain from user entered email.
+  $user_domain = strtolower(trim(substr(strrchr($email, "@"), 1)));
+
+  if (!empty($aaa_email_domains_lowercase_array) && ($user_domain != NULL || $user_domain != '') && in_array($user_domain, $aaa_email_domains_lowercase_array)) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_email_registration_name().
+ */
+function vodafone_aaa_integration_email_registration_name($edit, $account) {
+  return $account->mail;
+}
+
+/**
+ * Implements hook_field_attach_view_alter().
+ *
+ * Show titles of empty fields.
+ */
+function vodafone_aaa_integration_field_attach_view_alter(&$output, $context) {
+
+  // show profile fields when empty
+  if ($context['entity_type'] != 'user' || $context['view_mode'] != 'full') {
+    return;
+  }
+  $user = $context['entity'];
+
+  // Load all instances of the fields for the user profile.
+  $instances = _field_invoke_get_instances('user', 'user', array('default' => TRUE, 'deleted' => FALSE));
+
+  // Fields to be shown on user profile
+  $show_fields = array('field_user_phone','field_user_company','field_user_department');
+
+  foreach ($instances as $field_name => $instance) {
+    // Set content for fields they are empty.
+    if (empty($user->$field_name) && in_array($field_name, $show_fields)) {
+      $display = field_get_display($instance, 'full', $user);
+
+      // Load field settings.
+      $field = field_info_field($field_name);
+      // Set output for field.
+      $output[$field_name] = array(
+        '#theme' => 'field',
+        '#title' => $instance['label'],
+        '#label_display' => 'inline',
+        '#field_type' => $field['type'],
+        '#field_name' => $field_name,
+        '#bundle' => 'user',
+        '#object' => $user,
+        '#items' => array(),
+        '#entity_type' => 'user',
+        '#weight' => $display['weight'],
+        0 => array('#markup' => '&nbsp;'),
+      );
+    }
+  }
+}
+
+/**
+ * Custom function vodafone_aaa_integration_redirect().
+ */
+function vodafone_aaa_integration_redirect($user) {
+
+  // Redirect user to refer page.
+  if (isset($_SESSION['redirect_uri']) && !empty($_SESSION['redirect_uri'])) {
+    $destinaion = $_SESSION['redirect_uri'];
+    $url = drupal_parse_url($destinaion);
+    unset($_SESSION['redirect_uri']);
+    $options = array();
+    if (!empty($url['query']) && count($url['query']) > 0) {
+      $options = array('query' => $url['query']);
+    }
+    drupal_goto($url['path'], $options);
+  }
+  else {
+    // Redirection based on the roles.
+    $arr_roles = array_keys($user->roles);
+    if (in_array(3, $arr_roles)) {
+      drupal_goto('<front>');
+    }
+    else {
+      drupal_goto('<front>');
+    }
+    return TRUE;
+  }
+}

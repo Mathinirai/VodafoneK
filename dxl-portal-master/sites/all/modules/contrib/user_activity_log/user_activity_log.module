@@ -1,0 +1,227 @@
+<?php
+
+/**
+ * @file
+ * Display user activity as block.
+ */
+/**
+ * Implements hook_help().
+ */
+function user_activity_log_help($path, $arg) {
+  switch ($path) {
+    // Main module help for the block module
+    case 'admin/help#user_activity_log':
+      return '<h3>' . t('Introduction') . '</h3>' . '<p>' . t('This module provide the block which contains current login user activity. Like total no. of created node, total no. of comments, recent 3 created nodes and recent 3 comments.'). '</p>' . '<h3>' . t('Requirements') . '</h3>' . '<p>' .t('This module requires node and comments module.') . '</p>' . '<h3>' . t('Installation') . '</h3>' . '<p>' . t('Goto admin/module and enable the module.').'</p>'.'<h3>'.t('Configuration').'</h3>'.'<p>'.t('1. Go to admin/structure/block and enable the "user activity log" in any of your theme regions <a href="@blocks">blocks administration page</a>',array('@blocks' => url('admin/structure/block'))).'</p>';
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function user_activity_log_block_info() {
+  $blocks['user-activity-log'] = array(
+    'info' => t('User Activity Log'),
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function user_activity_log_block_view($delta = '') {
+  $block = array();
+  switch ($delta) {
+    case 'user-activity-log':
+      $block['subject'] = t('User Activity Log');
+      $block['content'] = user_activity_log_block_content();
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function user_activity_log_theme($existing, $type, $theme, $path) {
+  $theme = array();
+  $theme['user_activity_log_block'] = array(
+    'template' => 'templates/user-activity-log-block',
+    'variables' => array(),
+  );
+  $theme['user_activity_template'] = array(
+    'template' => 'templates/list_all_user_activity-page',
+    'variables' => array(),
+  );
+  return $theme;
+}
+
+/**
+ * User Activity Log block.
+ */
+function user_activity_log_block_content() {
+  global $user;
+  $uid = $user->uid;
+  if ($uid > 0) {
+    return theme('user_activity_log_block');
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Total node created by user.
+ */
+function user_activity_log_total_node_created_by_user($uid) {
+  $query = db_select('node', 'n');
+  $query->addTag('node_access');
+  $query->join('users', 'u', 'n.uid = u.uid');
+  $query->fields('n', array('nid'))
+    ->condition('n.uid', $uid, '=')
+    ->condition('n.status', NODE_PUBLISHED, '=');
+  $result = $query->countQuery()->execute()->fetchField();
+  if (!empty($result)) {
+    return $result;
+  }
+  else {
+    return 0;
+  }
+}
+
+/**
+ * Total comments by user.
+ */
+function user_activity_log_total_comments_by_user($uid) {
+  $query = db_select('comment', 'c');
+  $query->addTag('node_access');
+  $query->condition('uid', $uid, '=')
+    ->condition('status', COMMENT_PUBLISHED, '=');
+  $result = $query->countQuery()->execute()->fetchField();
+  if (!empty($result)) {
+    return $result;
+  }
+  else {
+    return 0;
+  }
+}
+
+/**
+ * Latest comment by user.
+ */
+function user_activity_log_latest_comment_by_user($uid, $all) {
+  $query = db_select('comment', 'c');
+  $query->join('node', 'n', 'c.nid = n.nid');
+  $query->addTag('node_access');
+  $query->fields('n', array('title', 'nid'))
+    ->condition('c.uid', $uid, '=')
+    ->condition('n.status', NODE_PUBLISHED, '=')
+    ->condition('c.status', COMMENT_PUBLISHED, '=')
+    ->orderBy('c.created', 'DESC')
+    ->orderBy('c.cid', 'DESC');
+    if(!$all) {
+      $query->range(0, 3);
+    }
+  $result = $query->execute()->fetchAll();
+  $list_of_nodes = array();
+  foreach ($result as $value) {
+    $node_title = $value->title;
+    $path = 'node/' . $value->nid;
+    $list_of_nodes[] = array('title' => $node_title, 'path' => $path);
+  }
+  return $list_of_nodes;
+}
+
+/**
+ * Latest node created by user.
+ */
+function user_activity_log_latest_node_created_by_user($uid, $all) {
+  $query = db_select('node', 'n');
+  $query->join('users', 'u', 'n.uid = u.uid');
+  $query->addTag('node_access');
+  $query->fields('n', array('title', 'nid'))
+    ->condition('n.uid', $uid, '=')
+    ->orderBy('n.created', 'DESC')
+    ->condition('n.status', NODE_PUBLISHED, '=');
+    if(!$all) {
+      $query->range(0, 3);
+    }
+  $result = $query->execute()->fetchAll();
+  $list_of_created_nodes = array();
+  foreach ($result as $value) {
+    $node_title = $value->title;
+    $path = 'node/' . $value->nid;
+    $list_of_created_nodes[] = array('title' => $node_title, 'path' => $path);
+  }
+  return $list_of_created_nodes;
+}
+
+/**
+ * Implements hook_preprocess_HOOK().
+ *
+ * For user-activity-log-block.tpl.php.
+ */
+function user_activity_log_preprocess_user_activity_log_block(&$variables) {
+  global $user;
+  $uid = $user->uid;
+  $variables['total_node'] = user_activity_log_total_node_created_by_user($uid);
+  $variables['total_comments'] = user_activity_log_total_comments_by_user($uid);
+  $total_comments_by_user = user_activity_log_latest_comment_by_user($uid , '');
+  $total_comments_by_user_arr = array();
+  foreach ($total_comments_by_user as $key => $value) {
+    $total_comments_by_user_arr[$key]['title'] = $value['title'];
+    $total_comments_by_user_arr[$key]['path'] = $value['path'];
+  }
+  $variables['total_comments_by_user_arr'] = $total_comments_by_user_arr;
+  $latest_node_created_by_user = user_activity_log_latest_node_created_by_user($uid, '');
+  $latest_node_created_by_user_arr = array();
+  foreach ($latest_node_created_by_user as $key => $value) {
+    $latest_node_created_by_user_arr[$key]['title'] = $value['title'];
+    $latest_node_created_by_user_arr[$key]['path'] = $value['path'];
+  }
+  $variables['latest_node_created_by_user_arr'] = $latest_node_created_by_user_arr;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function user_activity_log_menu() {
+  $items['list_all_user_activity_item'] = array(
+    'title' => 'List User All Activity',
+    'page callback' => 'list_all_user_activity',
+    'access arguments' => array('access content'),
+    'type' => MENU_SUGGESTED_ITEM,
+  );
+  return $items;
+}
+
+/** 
+* List all the user activity function.
+*/
+function list_all_user_activity() {
+  // Call theme() function, so that Drupal includes the list_all_user_activity-page.tpl.php template
+  return theme('user_activity_template');
+}
+
+/**
+ * Implements hook_preprocess_HOOK().
+ *
+ * For list_all_user_activity-page.tpl.php.
+ */
+function user_activity_log_preprocess_user_activity_template(&$variables) {
+  global $user;
+  $uid = $user->uid;
+  $all_comments_by_user = user_activity_log_latest_comment_by_user($uid, 'all');
+  $all_comments_by_user_arr = array();
+  foreach ($all_comments_by_user as $key => $value) {
+    $all_comments_by_user_arr[$key]['title'] = $value['title'];
+    $all_comments_by_user_arr[$key]['path'] = $value['path'];
+  }
+  $variables['all_comments_by_user_arr'] = $all_comments_by_user_arr;
+  $all_node_created_by_user = user_activity_log_latest_node_created_by_user($uid , 'all');
+  $all_node_created_by_user_arr = array();
+  foreach ($all_node_created_by_user as $key => $value) {
+    $all_node_created_by_user_arr[$key]['title'] = $value['title'];
+    $all_node_created_by_user_arr[$key]['path'] = $value['path'];
+  }
+  $variables['all_node_created_by_user_arr'] = $all_node_created_by_user_arr;
+}
